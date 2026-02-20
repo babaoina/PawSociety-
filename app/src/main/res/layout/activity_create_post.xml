@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5E6D3"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Top Bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="#7A4F2B"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:gravity="center_vertical"
+            android:elevation="4dp">
+
+            <TextView
+                android:id="@+id/btn_cancel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Cancel"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="New Post"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/btn_post"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Post"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+        <!-- Photo Upload Area -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="#F5F5F5"
+            android:layout_margin="16dp">
+
+            <TextView
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:text="🐾"
+                android:textSize="32sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Add Pet Photos"
+                android:textColor="#666666"
+                android:textSize="16sp"
+                android:layout_marginTop="12dp" />
+
+            <TextView
+                android:id="@+id/btn_add_photo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Tap to add from gallery or camera"
+                android:textColor="#7A4F2B"
+                android:textSize="14sp"
+                android:layout_marginTop="8dp" />
+
+        </LinearLayout>
+
+        <!-- Form -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:background="#F5E6D3"
+            android:id="@+id/form_container">
+
+            <!-- Pet Name -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Pet Name *"
+                android:textColor="#7A4F2B"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/et_pet_name"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:hint="Enter pet name (max 10 chars)"
+                android:inputType="textPersonName"
+                android:paddingHorizontal="12dp"
+                android:background="@drawable/edittext_bg"
+                android:layout_marginTop="8dp"
+                android:maxLength="10"
+                android:imeOptions="actionNext" />
+
+            <!-- Error space for pet name - will be populated programmatically -->
+
+            <!-- Pet Type/Breed -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Type/Breed *"
+                android:textColor="#7A4F2B"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="16dp" />
+
+            <AutoCompleteTextView
+                android:id="@+id/act_pet_type"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:hint="Start typing breed (e.g., Aspin, Shih Tzu)"
+                android:paddingHorizontal="12dp"
+                android:background="@drawable/edittext_bg"
+                android:layout_marginTop="8dp"
+                android:completionThreshold="1"
+                android:dropDownWidth="match_parent"
+                android:dropDownVerticalOffset="4dp"
+                android:popupBackground="#FFFFFF"
+                android:imeOptions="actionNext" />
+
+            <!-- Error space for pet type - will be populated programmatically -->
+
+            <!-- Status -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Status *"
+                android:textColor="#7A4F2B"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="16dp" />
+
+            <LinearLayout
+                android:id="@+id/status_buttons_layout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+
+                <TextView
+                    android:id="@+id/btn_status_lost"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:gravity="center"
+                    android:text="Lost"
+                    android:textColor="#FFFFFF"
+                    android:background="#F44336"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+                <TextView
+                    android:id="@+id/btn_status_found"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:gravity="center"
+                    android:text="Found"
+                    android:textColor="#FFFFFF"
+                    android:background="#4CAF50"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+                <TextView
+                    android:id="@+id/btn_status_adoption"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="Adoption"
+                    android:textColor="#FFFFFF"
+                    android:background="#2196F3"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+            </LinearLayout>
+
+            <!-- Error space for status - will be populated programmatically -->
+
+            <!-- Reward/Price -->
+            <LinearLayout
+                android:id="@+id/layout_reward"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Reward/Price"
+                    android:textColor="#7A4F2B"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="16dp" />
+
+                <EditText
+                    android:id="@+id/et_reward"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="Enter amount (e.g., ₱1000)"
+                    android:inputType="numberDecimal"
+                    android:paddingHorizontal="12dp"
+                    android:background="@drawable/edittext_bg"
+                    android:layout_marginTop="8dp"
+                    android:maxLength="20"
+                    android:imeOptions="actionNext" />
+
+            </LinearLayout>
+
+            <!-- Location - Now with Selector Button -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Location *"
+                android:textColor="#7A4F2B"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="16dp" />
+
+            <Button
+                android:id="@+id/btn_select_location"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Select Location"
+                android:textColor="#7A4F2B"
+                android:background="@drawable/edittext_bg"
+                android:gravity="center|start"
+                android:paddingLeft="12dp"
+                android:layout_marginTop="8dp"
+                android:imeOptions="actionNext" />
+
+            <TextView
+                android:id="@+id/tv_location"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="8dp"
+                android:textColor="#7A4F2B"
+                android:textSize="14sp"
+                android:text="No location selected"
+                android:visibility="gone"
+                android:layout_marginTop="4dp" />
+
+            <!-- Error space for location - will be populated programmatically -->
+
+            <!-- Contact -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Contact Number *"
+                android:textColor="#7A4F2B"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="16dp" />
+
+            <EditText
+                android:id="@+id/et_contact"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:hint="09123456789"
+                android:inputType="phone"
+                android:paddingHorizontal="12dp"
+                android:background="@drawable/edittext_bg"
+                android:layout_marginTop="8dp"
+                android:maxLength="11"
+                android:digits="0123456789"
+                android:imeOptions="actionNext" />
+
+            <!-- Phone hint -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="11 digits starting with 09"
+                android:textColor="#666666"
+                android:textSize="11sp"
+                android:layout_marginTop="4dp" />
+
+            <!-- Error space for contact - will be populated programmatically -->
+
+            <!-- Description -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Description *"
+                android:textColor="#7A4F2B"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="16dp" />
+
+            <EditText
+                android:id="@+id/et_description"
+                android:layout_width="match_parent"
+                android:layout_height="100dp"
+                android:hint="Tell us about this pet... (min. 10 characters)"
+                android:inputType="textMultiLine"
+                android:gravity="top|start"
+                android:padding="12dp"
+                android:background="@drawable/edittext_bg"
+                android:layout_marginTop="8dp"
+                android:maxLength="500"
+                android:imeOptions="actionDone" />
+
+            <!-- Error space for description - will be populated programmatically -->
+
+            <!-- Character counter hint -->
+            <TextView
+                android:id="@+id/tv_char_counter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0/500 characters"
+                android:textColor="#999999"
+                android:textSize="11sp"
+                android:layout_marginTop="4dp"
+                android:layout_gravity="end" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</ScrollView>
