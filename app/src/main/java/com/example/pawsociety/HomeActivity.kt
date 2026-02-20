@@ -14,9 +14,12 @@ import android.widget.*
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import com.bumptech.glide.Glide
 
 class HomeActivity : BaseNavigationActivity() {
 
@@ -25,6 +28,8 @@ class HomeActivity : BaseNavigationActivity() {
     private lateinit var emptyState: LinearLayout
     private lateinit var progressBar: ProgressBar
     private var currentUser: AppUser? = null
+    
+    private val postRepository = PostRepository()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -109,6 +114,22 @@ class HomeActivity : BaseNavigationActivity() {
         val btnLike = postView.findViewById<ImageView>(R.id.btn_like)
         val btnComment = postView.findViewById<TextView>(R.id.btn_comment)
         val btnShare = postView.findViewById<TextView>(R.id.btn_share)
+        val postImage = postView.findViewById<ImageView>(R.id.post_image)
+
+        if (post.imageUrls.isNotEmpty()) {
+            postImage.visibility = View.VISIBLE
+            val imageUrl = post.imageUrls[0]
+            // Handle both URLs and file paths
+            if (imageUrl.startsWith("/")) {
+                // It's a file path
+                Glide.with(this).load(java.io.File(imageUrl)).into(postImage)
+            } else {
+                // It's a URL
+                Glide.with(this).load(imageUrl).into(postImage)
+            }
+        } else {
+            postImage.visibility = View.GONE
+        }
 
         // Set post data
         userNameText.text = post.userName
@@ -117,7 +138,9 @@ class HomeActivity : BaseNavigationActivity() {
         statusText.text = post.status
         descriptionText.text = post.description
         contactText.text = post.contactInfo
-        dateText.text = post.createdAt
+        
+        val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+        dateText.text = post.createdAt?.toDate()?.let { dateFormat.format(it) } ?: "Just now"
 
         // Set status color and reward
         when (post.status) {
@@ -279,25 +302,27 @@ class HomeActivity : BaseNavigationActivity() {
     }
 
     private fun loadComments(container: LinearLayout, postId: String) {
-        val comments = UserDatabase.getCommentsForPost(this, postId)
-
-        if (comments.isEmpty()) {
-            val emptyView = TextView(this)
-            emptyView.layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            emptyView.gravity = android.view.Gravity.CENTER
-            emptyView.text = "No comments yet\nBe the first to comment!"
-            emptyView.setTextColor(Color.parseColor("#999999"))
-            emptyView.textSize = 14f
-            emptyView.setPadding(0, 50, 0, 50)
-            container.addView(emptyView)
-            return
-        }
-
-        for (comment in comments) {
-            addCommentView(container, comment)
+        lifecycleScope.launch {
+            postRepository.getComments(postId).collect { comments ->
+                if (comments.isEmpty()) {
+                    val emptyView = TextView(this@HomeActivity)
+                    emptyView.layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    emptyView.gravity = android.view.Gravity.CENTER
+                    emptyView.text = "No comments yet\nBe the first to comment!"
+                    emptyView.setTextColor(Color.parseColor("#999999"))
+                    emptyView.textSize = 14f
+                    emptyView.setPadding(0, 50, 0, 50)
+                    container.addView(emptyView)
+                } else {
+                    container.removeAllViews()
+                    for (comment in comments) {
+                        addCommentView(container, comment)
+                    }
+                }
+            }
         }
     }
 
@@ -325,8 +350,8 @@ class HomeActivity : BaseNavigationActivity() {
         userName.text = comment.userName
         commentText.text = comment.text
 
-        val timeAgo = getTimeAgo(comment.createdAt)
-        commentTime.text = timeAgo
+        val dateFormat = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
+        commentTime.text = comment.createdAt?.toDate()?.let { dateFormat.format(it) } ?: "Just now"
 
         val isLiked = currentUser != null && comment.likes.contains(currentUser!!.uid)
         if (isLiked) {
@@ -345,50 +370,16 @@ class HomeActivity : BaseNavigationActivity() {
                 return@setOnClickListener
             }
 
-            val success = UserDatabase.likeComment(this, comment.postId, comment.commentId, currentUser!!.uid)
-
-            if (success) {
-                val liked = likeButton.tag == "liked"
-                if (liked) {
-                    likeButton.setTextColor(Color.parseColor("#999999"))
-                    likeButton.tag = "unliked"
-                    likeCount.text = (comment.likes.size - 1).toString()
-                } else {
-                    likeButton.setTextColor(Color.parseColor("#FF6B35"))
-                    likeButton.tag = "liked"
-                    likeCount.text = (comment.likes.size + 1).toString()
+            // In a real app, you'd call a ViewModel method for this
+            lifecycleScope.launch {
+                val result = postRepository.toggleLike(comment.postId, currentUser!!.uid)
+                if (result is Resource.Success) {
+                    // Update UI or refresh
                 }
             }
         }
 
         container.addView(commentView)
-    }
-
-    private fun getTimeAgo(dateTime: String): String {
-        return try {
-            val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-            val date = format.parse(dateTime)
-            val now = Date()
-
-            if (date != null) {
-                val diff = now.time - date.time
-                val seconds = diff / 1000
-                val minutes = seconds / 60
-                val hours = minutes / 60
-                val days = hours / 24
-
-                when {
-                    days > 0 -> "${days}d ago"
-                    hours > 0 -> "${hours}h ago"
-                    minutes > 0 -> "${minutes}m ago"
-                    else -> "Just now"
-                }
-            } else {
-                "Unknown"
-            }
-        } catch (e: Exception) {
-            "Unknown"
-        }
     }
 
     private fun showPostOptions(post: Post, btnLike: ImageView) {
@@ -438,19 +429,7 @@ class HomeActivity : BaseNavigationActivity() {
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
 
-        dialogView.setPadding(0, 0, 0, 0)
-
         btnClose.setOnClickListener {
-            dialog.dismiss()
-        }
-
-        optionRemix.setOnClickListener {
-            Toast.makeText(this, "Remix feature coming soon", Toast.LENGTH_SHORT).show()
-            dialog.dismiss()
-        }
-
-        optionQr.setOnClickListener {
-            Toast.makeText(this, "QR code feature coming soon", Toast.LENGTH_SHORT).show()
             dialog.dismiss()
         }
 
@@ -462,11 +441,6 @@ class HomeActivity : BaseNavigationActivity() {
             }
             val isLiked = btnLike.tag == "liked"
             viewModel.toggleFavorite(post, isLiked)
-            dialog.dismiss()
-        }
-
-        optionUnfollow.setOnClickListener {
-            Toast.makeText(this, "Unfollowed ${post.userName}", Toast.LENGTH_SHORT).show()
             dialog.dismiss()
         }
 
@@ -539,14 +513,8 @@ class HomeActivity : BaseNavigationActivity() {
     }
 
     private fun showAboutAccountDialog(post: Post) {
-        val user = UserDatabase.getUserById(this, post.userId)
         val message = """
             About @${post.userName}
-            
-            📝 Bio: ${user?.bio ?: "No bio"}
-            📍 Location: ${user?.location ?: "Not set"}
-            📅 Joined: ${user?.createdAt ?: "Unknown"}
-            🐾 Posts: ${UserDatabase.getAllPosts(this).count { it.userId == post.userId }}
             
             This account posts about pets and rescue stories.
         """.trimIndent()
@@ -568,37 +536,6 @@ class HomeActivity : BaseNavigationActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
-    }
-
-    private fun showPostDetails(post: Post) {
-        val rewardText = if (post.reward.isNotEmpty()) {
-            val digitsOnly = post.reward.replace("[^0-9]".toRegex(), "")
-            val originalNumber = if (digitsOnly.isNotEmpty()) digitsOnly.toLong() else 0
-            val formattedReward = formatReward(post.reward)
-
-            if (originalNumber > 1000000) {
-                "💰 Reward: $formattedReward (max limit)"
-            } else {
-                "💰 Reward: $formattedReward"
-            }
-        } else {
-            "No reward"
-        }
-
-        val details = """
-        🐾 ${post.petName}
-        👤 By: ${post.userName}
-        📍 ${post.location}
-        🔍 Status: ${post.status}
-        ${rewardText}
-        📞 ${post.contactInfo}
-        
-        ${post.description}
-        
-        🕒 ${post.createdAt}
-    """.trimIndent()
-
-        Toast.makeText(this, details, Toast.LENGTH_LONG).show()
     }
 
     private fun sharePost(post: Post) {

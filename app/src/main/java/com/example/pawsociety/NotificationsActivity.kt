@@ -4,8 +4,11 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class NotificationsActivity : AppCompatActivity() {
+    private val userRepository = UserRepository()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_notifications)
@@ -22,11 +25,13 @@ class NotificationsActivity : AppCompatActivity() {
         }
 
         // Check if user is logged in
-        val currentUser = UserDatabase.getCurrentUser(this)
-        if (currentUser == null) {
-            Toast.makeText(this, "Please login to view notifications", Toast.LENGTH_SHORT).show()
-            finish()
-            return
+        lifecycleScope.launch {
+            val currentUser = userRepository.getCurrentUser()
+            if (currentUser == null) {
+                Toast.makeText(this@NotificationsActivity, "Please login to view notifications", Toast.LENGTH_SHORT).show()
+                finish()
+                return@launch
+            }
         }
 
         // Notification items are clickable too

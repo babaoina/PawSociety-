@@ -11,32 +11,57 @@ import android.view.LayoutInflater
 import android.view.View
 import android.widget.*
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import com.bumptech.glide.Glide
 
 class ProfileActivity : BaseNavigationActivity() {
 
+    private lateinit var viewModel: ProfileViewModel
     private var currentUser: AppUser? = null
     private var currentTab = "posts" // "posts" or "favorites"
     private val highlights = mutableListOf<Highlight>() // Dynamic highlights list
+    private val storageRepo = StorageRepository()
 
-    // Highlight data class
-    data class Highlight(val name: String, val emoji: String, val color: String)
+    private val selectImageLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            val validation = FileValidator.validateImage(this, it)
+            if (validation is Resource.Success) {
+                uploadProfilePicture(it)
+            } else if (validation is Resource.Error) {
+                Toast.makeText(this, validation.message, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun uploadProfilePicture(uri: android.net.Uri) {
+        val user = currentUser ?: return
+        lifecycleScope.launch {
+            Toast.makeText(this@ProfileActivity, "Uploading...", Toast.LENGTH_SHORT).show()
+            val result = storageRepo.uploadImage(this@ProfileActivity, uri, "profile_images")
+            if (result is Resource.Success) {
+                val updatedUser = user.copy(profileImageUrl = result.data)
+                viewModel.updateProfile(updatedUser)
+                Toast.makeText(this@ProfileActivity, "Profile picture updated in Storage!", Toast.LENGTH_LONG).show()
+                
+                // Set the image onto the view securely
+                findViewById<ImageView>(R.id.iv_profile_image)?.apply {
+                    visibility = View.VISIBLE
+                    setImageURI(uri)
+                }
+            } else if (result is Resource.Error) {
+                Toast.makeText(this@ProfileActivity, "Upload failed: ${result.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_profile)
 
-        currentUser = UserDatabase.getCurrentUser(this)
-        if (currentUser == null) {
-            Toast.makeText(this, "Please login first", Toast.LENGTH_SHORT).show()
-            val intent = Intent(this, LoginActivity::class.java)
-            startActivity(intent)
-            finish()
-            return
-        }
+        viewModel = androidx.lifecycle.ViewModelProvider(this)[ProfileViewModel::class.java]
 
-        updateProfileWithUserData(currentUser!!)
-        setupClickListeners(currentUser!!)
-        loadHighlights() // Load saved highlights
+        setupObservers()
 
         // Set up the big plus button
         findViewById<View>(R.id.big_plus_button)?.setOnClickListener {
@@ -49,12 +74,54 @@ class ProfileActivity : BaseNavigationActivity() {
         }
     }
 
+    private fun setupObservers() {
+        viewModel.user.observe(this) { user ->
+            if (user == null) {
+                Toast.makeText(this, "Please login first", Toast.LENGTH_SHORT).show()
+                startActivity(Intent(this, LoginActivity::class.java))
+                finish()
+                return@observe
+            }
+            currentUser = user
+            updateProfileWithUserData(user)
+            setupClickListeners(user)
+        }
+
+        viewModel.highlights.observe(this) { savedHighlights ->
+            highlights.clear()
+            highlights.addAll(savedHighlights)
+            updateHighlightsDisplay()
+        }
+
+        viewModel.userPosts.observe(this) { posts ->
+            if (currentTab == "posts") {
+                displayPostsGrid(posts)
+            }
+            
+            // Wait until posts are loaded to count them
+            findViewById<TextView>(R.id.tv_post_count)?.text = posts.size.toString()
+        }
+
+        viewModel.favoritePosts.observe(this) { posts ->
+            if (currentTab == "favorites") {
+                displayPostsGrid(posts)
+            }
+        }
+    }
+
     private fun updateProfileWithUserData(user: AppUser) {
         try {
             findViewById<TextView>(R.id.tv_username)?.text = user.username
 
             // Set circular profile picture
             setProfilePicture(user)
+
+            findViewById<View>(R.id.profile_circle_background)?.setOnClickListener {
+                selectImageLauncher.launch("image/*")
+            }
+            findViewById<TextView>(R.id.profile_initial)?.setOnClickListener {
+                selectImageLauncher.launch("image/*")
+            }
 
             val bioTextView = findViewById<TextView>(R.id.tv_bio)
 
@@ -78,18 +145,23 @@ class ProfileActivity : BaseNavigationActivity() {
 
             bioTextView?.text = newBio
 
-            val userPosts = UserDatabase.getAllPosts(this).filter { it.userId == user.uid }
-
-            findViewById<TextView>(R.id.tv_post_count)?.text = userPosts.size.toString()
-            findViewById<TextView>(R.id.tv_follower_count)?.text = "156"
-            findViewById<TextView>(R.id.tv_following_count)?.text = "132"
-
-            // Handle posts grid based on current tab
-            if (currentTab == "posts") {
-                loadPostsTab(user)
-            } else {
-                loadFavoritesTab(user)
+            val relationshipRepo = RelationshipRepository()
+            
+            // Collect follower count
+            lifecycleScope.launch {
+                relationshipRepo.getFollowerCount(user.uid).collect { count ->
+                    findViewById<TextView>(R.id.tv_follower_count)?.text = count.toString()
+                }
             }
+
+            // Collect following count
+            lifecycleScope.launch {
+                relationshipRepo.getFollowingCount(user.uid).collect { count ->
+                    findViewById<TextView>(R.id.tv_following_count)?.text = count.toString()
+                }
+            }
+
+            // Posts grid and post count are handled by setupObservers()
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -157,21 +229,7 @@ class ProfileActivity : BaseNavigationActivity() {
         return Color.parseColor(colors[index])
     }
 
-    private fun loadHighlights() {
-        // Load highlights from database
-        currentUser?.let { user ->
-            val savedHighlights = UserDatabase.getUserHighlights(this, user.uid)
-            highlights.clear()
-            highlights.addAll(savedHighlights)
-            updateHighlightsDisplay()
-        }
-    }
 
-    private fun saveHighlights() {
-        currentUser?.let { user ->
-            UserDatabase.saveUserHighlights(this, user.uid, highlights)
-        }
-    }
 
     private fun updateHighlightsDisplay() {
         val highlightsContainer = findViewById<LinearLayout>(R.id.highlights_container)
@@ -280,10 +338,8 @@ class ProfileActivity : BaseNavigationActivity() {
             .setPositiveButton("Create") { _, _ ->
                 val name = etName.text.toString().trim()
                 if (name.isNotEmpty()) {
-                    val newHighlight = Highlight(name, selectedEmoji, selectedColor)
-                    highlights.add(newHighlight)
-                    saveHighlights()
-                    updateHighlightsDisplay()
+                    val newHighlight = Highlight(name = name, emoji = selectedEmoji, color = selectedColor)
+                    viewModel.saveHighlight(newHighlight)
 
                     // Scroll to the end
                     val scrollView = findViewById<HorizontalScrollView>(R.id.highlights_scroll)
@@ -370,9 +426,18 @@ class ProfileActivity : BaseNavigationActivity() {
                         val post = posts[postIndex]
                         val postView = layoutInflater.inflate(R.layout.item_profile_post, squareContainer, false)
                         val postContent = postView.findViewById<TextView>(R.id.post_content)
+                        val postImage = postView.findViewById<ImageView>(R.id.post_image)
 
-                        postContent.text = "${getPetEmoji(post.petType)}\n${post.petName}"
-                        postContent.setBackgroundColor(Color.parseColor(colors[postIndex % colors.size]))
+                        if (post.imageUrls.isNotEmpty()) {
+                            postImage.visibility = View.VISIBLE
+                            postContent.visibility = View.GONE
+                            Glide.with(this@ProfileActivity).load(post.imageUrls[0]).into(postImage)
+                        } else {
+                            postImage.visibility = View.GONE
+                            postContent.visibility = View.VISIBLE
+                            postContent.text = "${getPetEmoji(post.petType)}\n${post.petName}"
+                            postContent.setBackgroundColor(Color.parseColor(colors[postIndex % colors.size]))
+                        }
 
                         postView.setOnClickListener {
                             showPostDetails(post)
@@ -455,7 +520,7 @@ class ProfileActivity : BaseNavigationActivity() {
                     findViewById<TextView>(R.id.tab_posts_icon)?.setTextColor(Color.parseColor("#B88B4A"))
                     findViewById<ImageView>(R.id.tab_favorites_icon)?.setColorFilter(Color.parseColor("#FFFFFF"), PorterDuff.Mode.SRC_ATOP)
 
-                    loadPostsTab(user)
+                    viewModel.userPosts.value?.let { displayPostsGrid(it) }
                 }
             }
 
@@ -468,7 +533,7 @@ class ProfileActivity : BaseNavigationActivity() {
                     findViewById<ImageView>(R.id.tab_favorites_icon)?.setColorFilter(Color.parseColor("#B88B4A"), PorterDuff.Mode.SRC_ATOP)
                     findViewById<TextView>(R.id.tab_posts_icon)?.setTextColor(Color.parseColor("#FFFFFF"))
 
-                    loadFavoritesTab(user)
+                    viewModel.favoritePosts.value?.let { displayPostsGrid(it) }
                 }
             }
 
@@ -477,76 +542,44 @@ class ProfileActivity : BaseNavigationActivity() {
         }
     }
 
-    private fun loadPostsTab(user: AppUser) {
+    private fun displayPostsGrid(posts: List<Post>) {
         try {
-            // Show user's posts
             val postsGrid = findViewById<LinearLayout>(R.id.posts_grid)
             val bigPlusButton = findViewById<View>(R.id.big_plus_button)
 
             if (postsGrid == null) {
-                Toast.makeText(this, "Error: posts_grid not found", Toast.LENGTH_SHORT).show()
                 return
             }
 
-            val userPosts = UserDatabase.getAllPosts(this).filter { it.userId == user.uid }
-
             postsGrid.removeAllViews()
 
-            if (userPosts.isNotEmpty()) {
+            if (posts.isNotEmpty()) {
                 bigPlusButton?.visibility = View.GONE
                 postsGrid.visibility = View.VISIBLE
-                createPostsGrid(postsGrid, userPosts)
+                createPostsGrid(postsGrid, posts)
             } else {
-                bigPlusButton?.visibility = View.VISIBLE
-                postsGrid.visibility = View.GONE
+                if (currentTab == "posts") {
+                    bigPlusButton?.visibility = View.VISIBLE
+                    postsGrid.visibility = View.GONE
+                } else {
+                    bigPlusButton?.visibility = View.GONE
+                    postsGrid.visibility = View.VISIBLE
+                    val emptyView = TextView(this)
+                    emptyView.layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    emptyView.gravity = android.view.Gravity.CENTER
+                    emptyView.text = "No favorites yet\nSave posts you like from the home feed!"
+                    emptyView.setTextColor(Color.parseColor("#999999"))
+                    emptyView.textSize = 16f
+                    emptyView.setPadding(0, 100, 0, 100)
+                    postsGrid.addView(emptyView)
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "Error loading posts: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun loadFavoritesTab(user: AppUser) {
-        try {
-            // Get user's favorite posts
-            val postsGrid = findViewById<LinearLayout>(R.id.posts_grid)
-            val bigPlusButton = findViewById<View>(R.id.big_plus_button)
-
-            if (postsGrid == null) {
-                Toast.makeText(this, "Error: posts_grid not found", Toast.LENGTH_SHORT).show()
-                return
-            }
-
-            postsGrid.removeAllViews()
-
-            // Hide big plus button
-            bigPlusButton?.visibility = View.GONE
-            postsGrid.visibility = View.VISIBLE
-
-            // Get favorite posts
-            val favoritePosts = UserDatabase.getFavoritePosts(this, user.uid)
-
-            if (favoritePosts.isNotEmpty()) {
-                // Show favorite posts in grid
-                createPostsGrid(postsGrid, favoritePosts)
-            } else {
-                // Show empty state
-                val emptyView = TextView(this)
-                emptyView.layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                emptyView.gravity = android.view.Gravity.CENTER
-                emptyView.text = "No favorites yet\nSave posts you like from the home feed!"
-                emptyView.setTextColor(Color.parseColor("#999999"))
-                emptyView.textSize = 16f
-                emptyView.setPadding(0, 100, 0, 100)
-                postsGrid.addView(emptyView)
-            }
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "Error loading favorites: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -591,24 +624,15 @@ class ProfileActivity : BaseNavigationActivity() {
                     val newUsername = etUsername.text.toString().trim()
                     val newBio = etBio.text.toString().trim()
 
-                    if (newUsername != user.username) {
-                        if (UserDatabase.isUsernameTaken(this, newUsername, user.uid)) {
-                            Toast.makeText(this, "Username already taken", Toast.LENGTH_SHORT).show()
-                            return@setOnClickListener
-                        }
-                    }
-
                     val updatedUser = user.copy(
                         fullName = newFullName,
                         username = newUsername,
                         bio = newBio
                     )
 
-                    UserDatabase.updateUser(this, updatedUser)
-                    currentUser = updatedUser
-                    updateProfileWithUserData(updatedUser)
+                    viewModel.updateProfile(updatedUser)
 
-                    Toast.makeText(this, "Profile updated!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@ProfileActivity, "Profile updating...", Toast.LENGTH_SHORT).show()
                     dialog.dismiss()
                 }
             }
@@ -692,11 +716,8 @@ class ProfileActivity : BaseNavigationActivity() {
 
     override fun onResume() {
         super.onResume()
-        val currentUser = UserDatabase.getCurrentUser(this)
-        currentUser?.let {
-            this.currentUser = it
-            updateProfileWithUserData(it)
-            loadHighlights() // Reload highlights when returning to profile
+        if (::viewModel.isInitialized) {
+            viewModel.refreshData()
         }
     }
 

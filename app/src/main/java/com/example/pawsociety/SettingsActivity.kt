@@ -6,6 +6,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
 class SettingsActivity : AppCompatActivity() {
+
+    private val authRepository = AuthRepository()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
@@ -42,10 +44,10 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
 
-        // LOGOUT BUTTON - Updated with UserDatabase
+        // LOGOUT BUTTON
         findViewById<android.view.View>(R.id.btn_logout).setOnClickListener {
-            // Logout from database
-            UserDatabase.logout(this)
+            // Logout from Firebase
+            authRepository.logout()
 
             Toast.makeText(this, "Logged out successfully", Toast.LENGTH_SHORT).show()
 

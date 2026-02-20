@@ -1,10 +1,11 @@
 package com.example.pawsociety
 
-import java.text.SimpleDateFormat
-import java.util.*
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentId
+import com.google.firebase.firestore.ServerTimestamp
 
 data class AppUser(
-    val uid: String = "",
+    @DocumentId val uid: String = "",
     val fullName: String = "",
     val username: String = "",
     val email: String = "",
@@ -12,60 +13,89 @@ data class AppUser(
     val location: String = "",
     val bio: String = "",
     val profileImageUrl: String = "",
-    val createdAt: String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    val isEmailVerified: Boolean = false,
+    @ServerTimestamp val createdAt: Timestamp? = null
 )
 
 data class Post(
-    val postId: String = "",
+    @DocumentId val postId: String = "",
     val userId: String = "",
     val userName: String = "",
     val userImageUrl: String = "",
     val petName: String = "",
     val petType: String = "",
-    val status: String = "",
+    val status: String = "", // e.g., "Lost", "Found", "Adoptable"
     val description: String = "",
     val location: String = "",
     val reward: String = "",
     val contactInfo: String = "",
     val imageUrls: List<String> = emptyList(),
-    val likes: List<String> = emptyList(),
-    val comments: List<Comment> = emptyList(), // Changed from Int to List<Comment>
+    val likes: List<String> = emptyList(), // UIDs of users who liked
+    val comments: List<Comment> = emptyList(),
+    val commentCount: Int = 0,
     val shares: Int = 0,
-    val createdAt: String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    @ServerTimestamp val createdAt: Timestamp? = null
 )
 
 data class Comment(
-    val commentId: String = "",
+    @DocumentId val commentId: String = "",
     val postId: String = "",
     val userId: String = "",
     val userName: String = "",
     val userImageUrl: String = "",
     val text: String = "",
     val likes: List<String> = emptyList(),
-    val createdAt: String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    @ServerTimestamp val createdAt: Timestamp? = null
+)
+
+data class Favorite(
+    @DocumentId val favoriteId: String = "",
+    val userId: String = "",
+    val postId: String = "",
+    @ServerTimestamp val createdAt: Timestamp? = null
+)
+
+data class Highlight(
+    @DocumentId val highlightId: String = "",
+    val userId: String = "",
+    val name: String = "",
+    val emoji: String = "",
+    val color: String = "",
+    @ServerTimestamp val createdAt: Timestamp? = null
 )
 
 data class Notification(
-    val notificationId: String = "",
+    @DocumentId val notificationId: String = "",
     val userId: String = "",
-    val fromUserId: String = "",
-    val fromUserName: String = "",
-    val fromUserImage: String = "",
-    val type: String = "",
-    val postId: String = "",
+    val title: String = "",
     val message: String = "",
+    val type: String = "",
+    val relatedId: String = "",
     val isRead: Boolean = false,
-    val createdAt: String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    @ServerTimestamp val createdAt: Timestamp? = null
 )
 
 data class Message(
-    val messageId: String = "",
+    @DocumentId val messageId: String = "",
+    val conversationId: String = "",
     val senderId: String = "",
-    val receiverId: String = "",
-    val senderName: String = "",
-    val senderImage: String = "",
     val text: String = "",
+    @ServerTimestamp val createdAt: Timestamp? = null
+)
+
+data class Conversation(
+    @DocumentId val conversationId: String = "",
+    val participants: List<String> = emptyList(),
+    val lastMessage: String = "",
+    @ServerTimestamp val lastMessageTimestamp: Timestamp? = null
+)
+
+data class Pet(
+    @DocumentId val petId: String = "",
+    val ownerId: String = "",
+    val name: String = "",
+    val breed: String = "",
+    val age: String = "",
     val imageUrl: String = "",
-    val isRead: Boolean = false,
-    val createdAt: String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    @ServerTimestamp val createdAt: Timestamp? = null
 )

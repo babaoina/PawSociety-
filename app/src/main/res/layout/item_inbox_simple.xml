@@ -29,4 +29,20 @@
         android:textStyle="bold"
         android:layout_marginStart="16dp" />
 
+    <View
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <TextView
+        android:id="@+id/btn_follow"
+        android:layout_width="80dp"
+        android:layout_height="32dp"
+        android:gravity="center"
+        android:text="Follow"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:background="#7A4F2B" />
+
 </LinearLayout>

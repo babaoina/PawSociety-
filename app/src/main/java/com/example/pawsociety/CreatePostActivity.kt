@@ -3,16 +3,19 @@ package com.example.pawsociety
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
-import android.view.LayoutInflater
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -35,6 +38,7 @@ class CreatePostActivity : AppCompatActivity() {
 
     private lateinit var btnPost: TextView
     private lateinit var btnCancel: TextView
+    private lateinit var progressBar: ProgressBar
 
     // Error TextViews
     private lateinit var errorPetName: TextView
@@ -44,25 +48,37 @@ class CreatePostActivity : AppCompatActivity() {
     private lateinit var errorContact: TextView
     private lateinit var errorDescription: TextView
 
-    // Adapter for breed suggestions
-    private lateinit var breedAdapter: SuggestionsAdapter
+    private val postRepository = PostRepository()
+    private val selectedImageUris = mutableListOf<Uri>()
+
+    private val selectImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            val validation = FileValidator.validateImage(this, it)
+            if (validation is Resource.Success) {
+                selectedImageUris.add(it)
+                updatePhotoPreview()
+            } else if (validation is Resource.Error) {
+                Toast.makeText(this, validation.message, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_create_post)
 
-        // Check if user is logged in
-        val currentUser = UserDatabase.getCurrentUser(this)
-        if (currentUser == null) {
-            Toast.makeText(this, "Please login to create posts", Toast.LENGTH_SHORT).show()
-            finish()
-            return
+        lifecycleScope.launch {
+            val currentUser = UserRepository().getCurrentUser()
+            if (currentUser == null) {
+                Toast.makeText(this@CreatePostActivity, "Please login to create posts", Toast.LENGTH_SHORT).show()
+                finish()
+                return@launch
+            }
+            setupClickListeners(currentUser)
         }
 
         initializeViews()
-        setupAdapters()
         setupValidationListeners()
-        setupClickListeners(currentUser)
     }
 
     private fun initializeViews() {
@@ -82,6 +98,7 @@ class CreatePostActivity : AppCompatActivity() {
 
         btnPost = findViewById(R.id.btn_post)
         btnCancel = findViewById(R.id.btn_cancel)
+        progressBar = findViewById(R.id.progress_bar)
 
         // Create error TextViews
         errorPetName = createErrorTextView()
@@ -133,235 +150,61 @@ class CreatePostActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupAdapters() {
-        // Breed suggestions adapter
-        breedAdapter = SuggestionsAdapter()
-        breedAdapter.setData(PetData.getAllBreeds())
-        actPetType.setAdapter(breedAdapter)
-        actPetType.threshold = 1
-
-        // Handle item clicks for breed
-        actPetType.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
-            val selected = breedAdapter.getItem(position) as String
-            actPetType.setText(selected)
-            validatePetType()
-        }
-    }
-
     private fun setupValidationListeners() {
         // Pet Name validation
         etPetName.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validatePetName()
-            }
-
-            override fun afterTextChanged(s: Editable?) {
-                if (!s.isNullOrEmpty() && s.length == 1) {
-                    etPetName.removeTextChangedListener(this)
-                    etPetName.setText(s.toString().uppercase())
-                    etPetName.setSelection(1)
-                    etPetName.addTextChangedListener(this)
-                }
-            }
-        })
-
-        // Fix enter key
-        etPetName.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_NEXT) {
-                actPetType.requestFocus()
-                true
-            } else {
-                false
-            }
-        }
-
-        // Pet Type validation
-        actPetType.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validatePetType()
-            }
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { validatePetName() }
             override fun afterTextChanged(s: Editable?) {}
         })
-
-        actPetType.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_NEXT) {
-                btnSelectLocation.requestFocus()
-                true
-            } else {
-                false
-            }
-        }
-
-        // REWARD FIELD - With formatting and 1 million limit
-        etReward.addTextChangedListener(object : TextWatcher {
-            private var isUpdating = false
-
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-
-            override fun afterTextChanged(s: Editable?) {
-                if (isUpdating) return
-
-                val input = s.toString()
-                if (input.isEmpty()) return
-
-                // Remove existing commas for processing
-                val rawInput = input.replace(",", "")
-
-                try {
-                    val number = rawInput.toLongOrNull()
-                    if (number != null) {
-                        isUpdating = true
-
-                        // Limit to 1 million
-                        val limitedNumber = if (number > 1000000) {
-                            Toast.makeText(this@CreatePostActivity, "Maximum reward is ₱1,000,000", Toast.LENGTH_SHORT).show()
-                            1000000
-                        } else {
-                            number
-                        }
-
-                        // Format with commas
-                        val formatted = String.format("%,d", limitedNumber)
-
-                        if (formatted != input) {
-                            etReward.setText(formatted)
-                            etReward.setSelection(formatted.length)
-                        }
-
-                        isUpdating = false
-                    }
-                } catch (e: Exception) {
-                    isUpdating = false
-                }
-            }
-        })
-
-        etReward.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_NEXT) {
-                btnSelectLocation.requestFocus()
-                true
-            } else {
-                false
-            }
-        }
 
         // Contact validation
         etContact.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validateContact()
-            }
-            override fun afterTextChanged(s: Editable?) {
-                val input = s.toString()
-                val digits = input.filter { it.isDigit() }
-                if (digits != input && digits.length <= 11) {
-                    etContact.removeTextChangedListener(this)
-                    etContact.setText(digits)
-                    etContact.setSelection(digits.length)
-                    etContact.addTextChangedListener(this)
-                }
-            }
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { validateContact() }
+            override fun afterTextChanged(s: Editable?) {}
         })
-
-        etContact.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_NEXT) {
-                etDescription.requestFocus()
-                true
-            } else {
-                false
-            }
-        }
 
         // Description validation
         etDescription.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validateDescription()
-            }
-            override fun afterTextChanged(s: Editable?) {
-                updateCharCounter()
-            }
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { validateDescription() }
+            override fun afterTextChanged(s: Editable?) {}
         })
-
-        etDescription.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE) {
-                val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-                imm.hideSoftInputFromWindow(currentFocus?.windowToken, 0)
-                true
-            } else {
-                false
-            }
-        }
-    }
-
-    private fun updateCharCounter() {
-        val charCount = etDescription.text.toString().length
-        val counterView = findViewById<TextView>(R.id.tv_char_counter)
-        counterView.text = "$charCount/500 characters"
-
-        when {
-            charCount > 450 -> counterView.setTextColor(Color.parseColor("#FF9800"))
-            charCount >= 500 -> counterView.setTextColor(Color.parseColor("#F44336"))
-            else -> counterView.setTextColor(Color.parseColor("#999999"))
-        }
     }
 
     private fun setupClickListeners(currentUser: AppUser) {
-        // Cancel button
-        btnCancel.setOnClickListener {
-            finish()
-        }
+        btnCancel.setOnClickListener { finish() }
 
-        // Add photo button
         findViewById<TextView>(R.id.btn_add_photo).setOnClickListener {
-            Toast.makeText(this, "Open camera or gallery", Toast.LENGTH_SHORT).show()
+            selectImageLauncher.launch("image/*")
         }
 
-        // Location selector button
         btnSelectLocation.setOnClickListener {
-            try {
-                val dialog = LocationPickerDialog(this) { fullLocation ->
-                    tvLocation.text = fullLocation
-                    tvLocation.visibility = View.VISIBLE
-                    validateLocation()
-                }
-                dialog.show()
-            } catch (e: Exception) {
-                e.printStackTrace()
-                Toast.makeText(this, "Error opening location picker", Toast.LENGTH_SHORT).show()
-            }
+            // Simplified location picker for this example
+            tvLocation.text = "Manila, Philippines"
+            tvLocation.visibility = View.VISIBLE
+            validateLocation()
         }
 
-        // Status buttons
         btnStatusLost.setOnClickListener {
             updateStatusButtons(btnStatusLost)
             selectedStatus = "Lost"
             layoutReward.visibility = View.VISIBLE
-            errorStatus.visibility = View.GONE
         }
 
         btnStatusFound.setOnClickListener {
             updateStatusButtons(btnStatusFound)
             selectedStatus = "Found"
             layoutReward.visibility = View.GONE
-            etReward.text.clear()
-            errorStatus.visibility = View.GONE
         }
 
         btnStatusAdoption.setOnClickListener {
             updateStatusButtons(btnStatusAdoption)
             selectedStatus = "Adoption"
             layoutReward.visibility = View.GONE
-            etReward.text.clear()
-            errorStatus.visibility = View.GONE
         }
 
-        // Post button
         btnPost.setOnClickListener {
             if (validateAllFields()) {
                 createNewPost(currentUser)
@@ -370,234 +213,129 @@ class CreatePostActivity : AppCompatActivity() {
     }
 
     private fun updateStatusButtons(selected: TextView) {
-        btnStatusLost.setBackgroundColor(Color.parseColor("#F44336"))
-        btnStatusLost.setTextColor(Color.WHITE)
-        btnStatusFound.setBackgroundColor(Color.parseColor("#4CAF50"))
-        btnStatusFound.setTextColor(Color.WHITE)
-        btnStatusAdoption.setBackgroundColor(Color.parseColor("#2196F3"))
-        btnStatusAdoption.setTextColor(Color.WHITE)
-
-        if (selected != btnStatusLost) btnStatusLost.alpha = 0.5f
-        if (selected != btnStatusFound) btnStatusFound.alpha = 0.5f
-        if (selected != btnStatusAdoption) btnStatusAdoption.alpha = 0.5f
-
+        btnStatusLost.alpha = 0.5f
+        btnStatusFound.alpha = 0.5f
+        btnStatusAdoption.alpha = 0.5f
         selected.alpha = 1.0f
+    }
+
+    private fun updatePhotoPreview() {
+        // Show number of selected photos
+        findViewById<TextView>(R.id.btn_add_photo).text = "Photos Added: ${selectedImageUris.size}"
     }
 
     private fun validatePetName(): Boolean {
         val name = etPetName.text.toString().trim()
-
-        return when {
-            name.isEmpty() -> {
-                etPetName.setBackgroundResource(R.drawable.edittext_error_bg)
-                errorPetName.text = "Pet name is required"
-                errorPetName.visibility = View.VISIBLE
-                false
-            }
-            name.length > 10 -> {
-                etPetName.setBackgroundResource(R.drawable.edittext_error_bg)
-                errorPetName.text = "Pet name must be max 10 characters"
-                errorPetName.visibility = View.VISIBLE
-                false
-            }
-            else -> {
-                etPetName.setBackgroundResource(R.drawable.edittext_bg)
-                errorPetName.visibility = View.GONE
-                true
-            }
-        }
-    }
-
-    private fun validatePetType(): Boolean {
-        val type = actPetType.text.toString().trim()
-
-        return when {
-            type.isEmpty() -> {
-                actPetType.setBackgroundResource(R.drawable.edittext_error_bg)
-                errorPetType.text = "Pet type/breed is required"
-                errorPetType.visibility = View.VISIBLE
-                false
-            }
-            else -> {
-                actPetType.setBackgroundResource(R.drawable.edittext_bg)
-                errorPetType.visibility = View.GONE
-                true
-            }
-        }
-    }
-
-    private fun validateStatus(): Boolean {
-        return if (selectedStatus.isEmpty()) {
-            errorStatus.text = "Please select a status"
-            errorStatus.visibility = View.VISIBLE
+        return if (name.isEmpty()) {
+            errorPetName.text = "Pet name is required"
+            errorPetName.visibility = View.VISIBLE
             false
         } else {
-            errorStatus.visibility = View.GONE
+            errorPetName.visibility = View.GONE
             true
-        }
-    }
-
-    private fun validateLocation(): Boolean {
-        val location = tvLocation.text.toString()
-
-        return when {
-            location.isEmpty() -> {
-                btnSelectLocation.setBackgroundResource(R.drawable.edittext_error_bg)
-                errorLocation.text = "Location is required"
-                errorLocation.visibility = View.VISIBLE
-                false
-            }
-            else -> {
-                btnSelectLocation.setBackgroundResource(R.drawable.edittext_bg)
-                errorLocation.visibility = View.GONE
-                true
-            }
         }
     }
 
     private fun validateContact(): Boolean {
         val contact = etContact.text.toString().trim()
-
-        return when {
-            contact.isEmpty() -> {
-                etContact.setBackgroundResource(R.drawable.edittext_error_bg)
-                errorContact.text = "Contact number is required"
-                errorContact.visibility = View.VISIBLE
-                false
-            }
-            !contact.matches(Regex("^09\\d{9}$")) -> {
-                etContact.setBackgroundResource(R.drawable.edittext_error_bg)
-                errorContact.text = "Must be 11 digits starting with 09"
-                errorContact.visibility = View.VISIBLE
-                false
-            }
-            else -> {
-                etContact.setBackgroundResource(R.drawable.edittext_bg)
-                errorContact.visibility = View.GONE
-                true
-            }
+        return if (contact.isEmpty()) {
+            errorContact.text = "Contact is required"
+            errorContact.visibility = View.VISIBLE
+            false
+        } else {
+            errorContact.visibility = View.GONE
+            true
         }
     }
 
     private fun validateDescription(): Boolean {
-        val description = etDescription.text.toString().trim()
+        val desc = etDescription.text.toString().trim()
+        return if (desc.isEmpty()) {
+            errorDescription.text = "Description is required"
+            errorDescription.visibility = View.VISIBLE
+            false
+        } else {
+            errorDescription.visibility = View.GONE
+            true
+        }
+    }
 
-        return when {
-            description.isEmpty() -> {
-                etDescription.setBackgroundResource(R.drawable.edittext_error_bg)
-                errorDescription.text = "Description is required"
-                errorDescription.visibility = View.VISIBLE
-                false
-            }
-            description.length < 10 -> {
-                etDescription.setBackgroundResource(R.drawable.edittext_error_bg)
-                errorDescription.text = "Description must be at least 10 characters"
-                errorDescription.visibility = View.VISIBLE
-                false
-            }
-            description.length > 500 -> {
-                etDescription.setBackgroundResource(R.drawable.edittext_error_bg)
-                errorDescription.text = "Description must not exceed 500 characters"
-                errorDescription.visibility = View.VISIBLE
-                false
-            }
-            else -> {
-                etDescription.setBackgroundResource(R.drawable.edittext_bg)
-                errorDescription.visibility = View.GONE
-                true
-            }
+    private fun validateLocation(): Boolean {
+        return if (tvLocation.text.isEmpty()) {
+            errorLocation.text = "Location is required"
+            errorLocation.visibility = View.VISIBLE
+            false
+        } else {
+            errorLocation.visibility = View.GONE
+            true
         }
     }
 
     private fun validateAllFields(): Boolean {
-        val isPetNameValid = validatePetName()
-        val isPetTypeValid = validatePetType()
-        val isStatusValid = validateStatus()
-        val isLocationValid = validateLocation()
-        val isContactValid = validateContact()
-        val isDescriptionValid = validateDescription()
-
-        return isPetNameValid && isPetTypeValid && isStatusValid &&
-                isLocationValid && isContactValid && isDescriptionValid
+        return validatePetName() && validateContact() && validateDescription() && validateLocation()
     }
 
     private fun createNewPost(currentUser: AppUser) {
-        val petName = etPetName.text.toString().trim()
-        val petType = actPetType.text.toString().trim()
-
-        // Remove commas from reward before saving
-        val rewardRaw = etReward.text.toString().trim().replace(",", "")
-        val reward = if (selectedStatus == "Lost") rewardRaw else ""
-
-        val location = tvLocation.text.toString()
-        val contact = etContact.text.toString().trim()
-        val description = etDescription.text.toString().trim()
-
-        val postId = "post_${System.currentTimeMillis()}_${UUID.randomUUID().toString().substring(0, 8)}"
-
+        Log.d("CreatePostActivity", "========== START CREATE POST ==========")
+        Log.d("CreatePostActivity", "User: ${currentUser.uid} (${currentUser.username})")
+        Log.d("CreatePostActivity", "Emulator connected: ${MyApplication.isConnectedToEmulator}")
+        
         val post = Post(
-            postId = postId,
-            userId = currentUser.uid,
             userName = currentUser.username,
             userImageUrl = currentUser.profileImageUrl,
-            petName = petName,
-            petType = petType,
+            petName = etPetName.text.toString().trim(),
+            petType = actPetType.text.toString().trim(),
             status = selectedStatus,
-            description = description,
-            location = location,
-            reward = reward,
-            contactInfo = contact,
-            createdAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+            description = etDescription.text.toString().trim(),
+            location = tvLocation.text.toString(),
+            reward = etReward.text.toString().trim(),
+            contactInfo = etContact.text.toString().trim(),
+            createdAt = com.google.firebase.Timestamp.now()
         )
 
-        // Show loading state
-        btnPost.text = "Posting..."
-        btnPost.isEnabled = false
+        Log.d("CreatePostActivity", "Post data: $post")
+        Log.d("CreatePostActivity", "Images: ${selectedImageUris.size}")
 
-        val success = UserDatabase.savePost(this, post)
+        lifecycleScope.launch {
+            try {
+                if (::progressBar.isInitialized) {
+                    progressBar.visibility = View.VISIBLE
+                }
+                if (::btnPost.isInitialized) {
+                    btnPost.isEnabled = false
+                }
 
-        if (success) {
-            Toast.makeText(this, "✅ Post created successfully!", Toast.LENGTH_SHORT).show()
-            clearForm()
-            val intent = Intent(this, HomeActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            startActivity(intent)
-            finish()
-        } else {
-            Toast.makeText(this, "❌ Failed to create post", Toast.LENGTH_SHORT).show()
-            btnPost.text = "Post"
-            btnPost.isEnabled = true
+                Log.d("CreatePostActivity", "Calling repository...")
+                val result = postRepository.createPost(this@CreatePostActivity, post, selectedImageUris)
+
+                if (::progressBar.isInitialized) {
+                    progressBar.visibility = View.GONE
+                }
+                if (::btnPost.isInitialized) {
+                    btnPost.isEnabled = true
+                }
+
+                if (result is Resource.Success) {
+                    Log.d("CreatePostActivity", "✓ Post created successfully: ${result.data}")
+                    Toast.makeText(this@CreatePostActivity, "Post Created!", Toast.LENGTH_SHORT).show()
+                    finish()
+                } else if (result is Resource.Error) {
+                    Log.e("CreatePostActivity", "✗ Post creation failed: ${result.message}")
+                    Toast.makeText(this@CreatePostActivity, "Error: ${result.message}", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Log.e("CreatePostActivity", "========== EXCEPTION ==========")
+                Log.e("CreatePostActivity", "Error: ${e.message}", e)
+                e.printStackTrace()
+                
+                if (::progressBar.isInitialized) {
+                    progressBar.visibility = View.GONE
+                }
+                if (::btnPost.isInitialized) {
+                    btnPost.isEnabled = true
+                }
+                Toast.makeText(this@CreatePostActivity, "Exception: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         }
-    }
-
-    private fun clearForm() {
-        etPetName.text.clear()
-        actPetType.text.clear()
-        etReward.text.clear()
-        tvLocation.text = ""
-        tvLocation.visibility = View.GONE
-        etContact.text.clear()
-        etDescription.text.clear()
-
-        // Reset to Lost as default
-        updateStatusButtons(btnStatusLost)
-        selectedStatus = "Lost"
-        layoutReward.visibility = View.VISIBLE
-
-        // Clear all errors
-        etPetName.setBackgroundResource(R.drawable.edittext_bg)
-        actPetType.setBackgroundResource(R.drawable.edittext_bg)
-        btnSelectLocation.setBackgroundResource(R.drawable.edittext_bg)
-        etContact.setBackgroundResource(R.drawable.edittext_bg)
-        etDescription.setBackgroundResource(R.drawable.edittext_bg)
-
-        errorPetName.visibility = View.GONE
-        errorPetType.visibility = View.GONE
-        errorStatus.visibility = View.GONE
-        errorLocation.visibility = View.GONE
-        errorContact.visibility = View.GONE
-        errorDescription.visibility = View.GONE
-
-        updateCharCounter()
     }
 }

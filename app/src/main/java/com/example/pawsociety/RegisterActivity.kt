@@ -4,13 +4,20 @@ import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
-import android.widget.TextView
+import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class RegisterActivity : AppCompatActivity() {
+
+    private lateinit var viewModel: AuthViewModel
+    private lateinit var progressBar: ProgressBar
 
     private lateinit var etLastName: EditText
     private lateinit var etFirstName: EditText
@@ -25,15 +32,17 @@ class RegisterActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_register)
 
+        // Initialize ViewModel
+        viewModel = ViewModelProvider(this)[AuthViewModel::class.java]
+
         initializeViews()
         setupValidationListeners()
+        setupObservers()
 
         val backButton = findViewById<Button>(R.id.btn_back)
         val createAccountButton = findViewById<Button>(R.id.btn_create_account)
 
-        backButton.setOnClickListener {
-            finish()
-        }
+        backButton.setOnClickListener { finish() }
 
         createAccountButton.setOnClickListener {
             if (validateAllFields()) {
@@ -51,78 +60,23 @@ class RegisterActivity : AppCompatActivity() {
         etPassword = findViewById(R.id.et_password)
         etConfirmPassword = findViewById(R.id.et_confirm_password)
         etPhone = findViewById(R.id.et_phone)
+        progressBar = findViewById(R.id.progress_bar)
     }
 
     private fun setupValidationListeners() {
-        // Last Name validation
-        etLastName.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun afterTextChanged(s: Editable?) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validateLastName()
-            }
+        etLastName.addTextChangedListener(SimpleTextWatcher { validateLastName() })
+        etFirstName.addTextChangedListener(SimpleTextWatcher { validateFirstName() })
+        etMiddleInitial.addTextChangedListener(SimpleTextWatcher { validateMiddleInitial() })
+        etUsername.addTextChangedListener(SimpleTextWatcher { validateUsername() })
+        etEmail.addTextChangedListener(SimpleTextWatcher { validateEmail() })
+        etPassword.addTextChangedListener(SimpleTextWatcher {
+            validatePassword()
+            if (etConfirmPassword.text.toString().isNotEmpty()) validateConfirmPassword()
         })
-
-        // First Name validation
-        etFirstName.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun afterTextChanged(s: Editable?) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validateFirstName()
-            }
-        })
-
-        // Middle initial validation
-        etMiddleInitial.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun afterTextChanged(s: Editable?) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validateMiddleInitial()
-            }
-        })
-
-        // Username validation
-        etUsername.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun afterTextChanged(s: Editable?) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validateUsername()
-            }
-        })
-
-        // Email validation
-        etEmail.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun afterTextChanged(s: Editable?) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validateEmail()
-            }
-        })
-
-        // Password validation
-        etPassword.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun afterTextChanged(s: Editable?) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validatePassword()
-                if (etConfirmPassword.text.toString().isNotEmpty()) {
-                    validateConfirmPassword()
-                }
-            }
-        })
-
-        // Confirm Password validation
-        etConfirmPassword.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun afterTextChanged(s: Editable?) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validateConfirmPassword()
-            }
-        })
-
-        // Phone validation with auto-formatting
+        etConfirmPassword.addTextChangedListener(SimpleTextWatcher { validateConfirmPassword() })
         etPhone.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { validatePhone() }
             override fun afterTextChanged(s: Editable?) {
                 val input = s.toString()
                 val digits = input.filter { it.isDigit() }
@@ -134,256 +88,135 @@ class RegisterActivity : AppCompatActivity() {
                     etPhone.setSelection(digits.length)
                 }
             }
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                validatePhone()
-            }
         })
     }
 
-    private fun validateLastName(): Boolean {
-        val name = etLastName.text.toString().trim()
-        return when {
-            name.isEmpty() -> {
-                etLastName.error = "Last name is required"
-                false
-            }
-            name.length < 2 -> {
-                etLastName.error = "Last name must be at least 2 characters"
-                false
-            }
-            !name.matches(Regex("^[a-zA-Z\\s.-]+$")) -> {
-                etLastName.error = "Only letters, spaces, dots, and hyphens allowed"
-                false
-            }
-            else -> {
-                etLastName.error = null
-                true
-            }
-        }
-    }
-
-    private fun validateFirstName(): Boolean {
-        val name = etFirstName.text.toString().trim()
-        return when {
-            name.isEmpty() -> {
-                etFirstName.error = "First name is required"
-                false
-            }
-            name.length < 2 -> {
-                etFirstName.error = "First name must be at least 2 characters"
-                false
-            }
-            !name.matches(Regex("^[a-zA-Z\\s.-]+$")) -> {
-                etFirstName.error = "Only letters, spaces, dots, and hyphens allowed"
-                false
-            }
-            else -> {
-                etFirstName.error = null
-                true
+    private fun setupObservers() {
+        viewModel.authResult.observe(this) { result ->
+            when (result) {
+                is AuthResult.Loading -> {
+                    progressBar.visibility = View.VISIBLE
+                }
+                is AuthResult.Success -> {
+                    progressBar.visibility = View.GONE
+                    Toast.makeText(this, "✅ Account created! (Email auto-verified)", Toast.LENGTH_SHORT).show()
+                    startActivity(Intent(this, HomeActivity::class.java))
+                    finish()
+                }
+                is AuthResult.Error -> {
+                    progressBar.visibility = View.GONE
+                    Toast.makeText(this, "❌ ${result.message}", Toast.LENGTH_LONG).show()
+                }
+                else -> {}
             }
         }
     }
 
+    private fun createAccount() {
+        // Check emulator connection
+        if (!MyApplication.isConnectedToEmulator) {
+            Toast.makeText(this, "⚠️ Emulators not connected! Check logcat.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val fullName = "${etFirstName.text.toString().trim()} ${etLastName.text.toString().trim()}"
+        val username = etUsername.text.toString().trim()
+        val email = etEmail.text.toString().trim()
+        val password = etPassword.text.toString()
+        val phone = etPhone.text.toString().trim()
+
+        viewModel.register(fullName, username, email, password, phone)
+    }
+
+    private class SimpleTextWatcher(val onTextChanged: () -> Unit) : TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { onTextChanged() }
+        override fun afterTextChanged(s: Editable?) {}
+    }
+
+    private fun validateLastName() = validateRequired(etLastName, "Last name")
+    private fun validateFirstName() = validateRequired(etFirstName, "First name")
+    
     private fun validateMiddleInitial(): Boolean {
         val initial = etMiddleInitial.text.toString().trim()
-        return when {
-            initial.isEmpty() -> true // Optional
-            initial.length != 1 -> {
-                etMiddleInitial.error = "Middle initial must be a single letter"
-                false
-            }
-            !initial[0].isLetter() -> {
-                etMiddleInitial.error = "Middle initial must be a letter"
-                false
-            }
-            else -> {
-                etMiddleInitial.error = null
-                true
-            }
+        if (initial.isNotEmpty() && (initial.length != 1 || !initial[0].isLetter())) {
+            etMiddleInitial.error = "Invalid initial"
+            return false
+        }
+        etMiddleInitial.error = null
+        return true
+    }
+
+    private fun validateRequired(editText: EditText, fieldName: String): Boolean {
+        val text = editText.text.toString().trim()
+        return if (text.isEmpty()) {
+            editText.error = "$fieldName is required"
+            false
+        } else {
+            editText.error = null
+            true
         }
     }
 
     private fun validateUsername(): Boolean {
         val username = etUsername.text.toString().trim()
-        return when {
-            username.isEmpty() -> {
-                etUsername.error = "Username is required"
-                false
-            }
-            username.length < 3 -> {
-                etUsername.error = "Username must be at least 3 characters"
-                false
-            }
-            username.length > 20 -> {
-                etUsername.error = "Username must be less than 20 characters"
-                false
-            }
-            !username.matches(Regex("^[a-zA-Z0-9._]+$")) -> {
-                etUsername.error = "Only letters, numbers, dots, and underscores allowed"
-                false
-            }
-            username.matches(Regex("^[0-9].*")) -> {
-                etUsername.error = "Username cannot start with a number"
-                false
-            }
-            else -> {
-                etUsername.error = null
-                true
-            }
+        return if (username.length < 3) {
+            etUsername.error = "Too short"
+            false
+        } else {
+            etUsername.error = null
+            true
         }
     }
 
     private fun validateEmail(): Boolean {
         val email = etEmail.text.toString().trim()
-        return when {
-            email.isEmpty() -> {
-                etEmail.error = "Email is required"
-                false
-            }
-            !email.endsWith("@gmail.com", ignoreCase = true) -> {
-                etEmail.error = "Only Gmail addresses are allowed (@gmail.com)"
-                false
-            }
-            !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches() -> {
-                etEmail.error = "Please enter a valid email address"
-                false
-            }
-            else -> {
-                etEmail.error = null
-                true
-            }
+        return if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            etEmail.error = "Invalid email"
+            false
+        } else {
+            etEmail.error = null
+            true
         }
     }
 
     private fun validatePassword(): Boolean {
-        val password = etPassword.text.toString()
-
-        return when {
-            password.isEmpty() -> {
-                etPassword.error = "Password is required"
-                false
-            }
-            password.length < 8 -> {
-                etPassword.error = "Password must be at least 8 characters"
-                false
-            }
-            !password.matches(Regex(".*[A-Z].*")) -> {
-                etPassword.error = "Must contain at least one uppercase letter"
-                false
-            }
-            !password.matches(Regex(".*[0-9].*")) -> {
-                etPassword.error = "Must contain at least one number"
-                false
-            }
-            password.contains(" ") -> {
-                etPassword.error = "Password cannot contain spaces"
-                false
-            }
-            else -> {
-                etPassword.error = null
-                true
-            }
+        val pass = etPassword.text.toString()
+        return if (pass.length < 8) {
+            etPassword.error = "Min 8 characters"
+            false
+        } else {
+            etPassword.error = null
+            true
         }
     }
 
     private fun validateConfirmPassword(): Boolean {
-        val password = etPassword.text.toString()
-        val confirmPassword = etConfirmPassword.text.toString()
-
-        return when {
-            confirmPassword.isEmpty() -> {
-                etConfirmPassword.error = "Please confirm your password"
-                false
-            }
-            password != confirmPassword -> {
-                etConfirmPassword.error = "Passwords do not match"
-                false
-            }
-            else -> {
-                etConfirmPassword.error = null
-                true
-            }
+        val pass = etPassword.text.toString()
+        val confirm = etConfirmPassword.text.toString()
+        return if (pass != confirm) {
+            etConfirmPassword.error = "Passwords don't match"
+            false
+        } else {
+            etConfirmPassword.error = null
+            true
         }
     }
 
     private fun validatePhone(): Boolean {
         val phone = etPhone.text.toString().trim()
-
-        return when {
-            phone.isEmpty() -> {
-                etPhone.error = "Phone number is required"
-                false
-            }
-            phone.length != 11 -> {
-                etPhone.error = "Phone number must be exactly 11 digits"
-                false
-            }
-            !phone.matches(Regex("^09\\d{9}$")) -> {
-                etPhone.error = "Must start with 09 (e.g., 09123456789)"
-                false
-            }
-            else -> {
-                etPhone.error = null
-                true
-            }
+        return if (phone.length != 11) {
+            etPhone.error = "11 digits required"
+            false
+        } else {
+            etPhone.error = null
+            true
         }
     }
 
     private fun validateAllFields(): Boolean {
-        val isLastNameValid = validateLastName()
-        val isFirstNameValid = validateFirstName()
-        val isMiddleInitialValid = validateMiddleInitial()
-        val isUsernameValid = validateUsername()
-        val isEmailValid = validateEmail()
-        val isPasswordValid = validatePassword()
-        val isConfirmPasswordValid = validateConfirmPassword()
-        val isPhoneValid = validatePhone()
-
-        return isLastNameValid && isFirstNameValid && isMiddleInitialValid &&
-                isUsernameValid && isEmailValid && isPasswordValid &&
-                isConfirmPasswordValid && isPhoneValid
-    }
-
-    private fun createAccount() {
-        val lastName = etLastName.text.toString().trim()
-        val firstName = etFirstName.text.toString().trim()
-        val middleInitial = etMiddleInitial.text.toString().trim()
-        val fullName = if (middleInitial.isNotEmpty()) {
-            "$lastName, $firstName $middleInitial."
-        } else {
-            "$lastName, $firstName"
-        }
-
-        val username = etUsername.text.toString().trim()
-        val email = etEmail.text.toString().trim()
-        val password = etPassword.text.toString()
-        val phone = etPhone.text.toString().trim()
-        val location = "" // Empty location since we removed it
-
-        // Create AppUser object
-        val user = AppUser(
-            fullName = fullName,
-            username = username,
-            email = email,
-            phone = phone,
-            location = location
-        )
-
-        // Register user
-        val success = UserDatabase.registerUser(this, user, password)
-
-        if (success) {
-            Toast.makeText(this, "Account created successfully!", Toast.LENGTH_SHORT).show()
-
-            // Auto login after registration
-            UserDatabase.loginUser(this, email, password)
-
-            // Go to Home
-            val intent = Intent(this, HomeActivity::class.java)
-            startActivity(intent)
-            finish()
-        } else {
-            Toast.makeText(this, "Email or username already exists", Toast.LENGTH_SHORT).show()
-        }
+        return validateLastName() && validateFirstName() && validateMiddleInitial() &&
+                validateUsername() && validateEmail() && validatePassword() &&
+                validateConfirmPassword() && validatePhone()
     }
 }

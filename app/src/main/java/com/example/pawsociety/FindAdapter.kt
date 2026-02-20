@@ -9,8 +9,8 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
 class FindAdapter(
-    private val posts: List<Post>,
-    private val onItemClick: (Post) -> Unit
+    private val pets: List<Pet>,
+    private val onItemClick: (Pet) -> Unit
 ) : RecyclerView.Adapter<FindAdapter.FindViewHolder>() {
 
     private val colors = listOf(
@@ -34,41 +34,28 @@ class FindAdapter(
 
     override fun onBindViewHolder(holder: FindViewHolder, position: Int) {
         try {
-            val post = posts[position]
+            val pet = pets[position]
 
             // Set placeholder text
-            val firstLetter = if (post.petName.isNotEmpty()) {
-                post.petName.first().toString()
+            val firstLetter = if (pet.name.isNotEmpty()) {
+                pet.name.first().toString()
             } else {
                 "?"
             }
 
-            val emoji = when {
-                post.petType.contains("dog", ignoreCase = true) -> "🐶"
-                post.petType.contains("cat", ignoreCase = true) -> "🐱"
-                post.petType.contains("bird", ignoreCase = true) -> "🐦"
-                post.petType.contains("rabbit", ignoreCase = true) -> "🐰"
-                post.petType.contains("fish", ignoreCase = true) -> "🐟"
-                else -> "🐾"
-            }
-
+            val emoji = "🐾"
             holder.imagePlaceholder.text = "$emoji\n$firstLetter"
 
-            // Set color based on post ID
-            val colorIndex = Math.abs(post.postId.hashCode()) % colors.size
+            // Set color based on pet ID
+            val colorIndex = Math.abs(pet.petId.hashCode()) % colors.size
             holder.imagePlaceholder.setBackgroundColor(Color.parseColor(colors[colorIndex]))
 
             // Set pet name
-            holder.petName.text = post.petName
+            holder.petName.text = pet.name
 
-            // Set status badge
-            holder.statusBadge.text = post.status
-            when (post.status.lowercase()) {
-                "lost" -> holder.statusBadge.setBackgroundColor(Color.parseColor("#F44336"))
-                "found" -> holder.statusBadge.setBackgroundColor(Color.parseColor("#4CAF50"))
-                "adoption" -> holder.statusBadge.setBackgroundColor(Color.parseColor("#2196F3"))
-                else -> holder.statusBadge.setBackgroundColor(Color.parseColor("#7A4F2B"))
-            }
+            // Set status badge (Breed instead)
+            holder.statusBadge.text = pet.breed
+            holder.statusBadge.setBackgroundColor(Color.parseColor("#7A4F2B"))
 
             // Make container square
             holder.container.post {
@@ -81,12 +68,12 @@ class FindAdapter(
 
             // Set click listener
             holder.itemView.setOnClickListener {
-                onItemClick(post)
+                onItemClick(pet)
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    override fun getItemCount() = posts.size
+    override fun getItemCount() = pets.size
 }

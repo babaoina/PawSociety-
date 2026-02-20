@@ -75,10 +75,12 @@
         </LinearLayout>
 
         <!-- Post Image - TALLER FOR WIDER LOOK -->
-        <View
+        <ImageView
             android:id="@+id/post_image"
             android:layout_width="match_parent"
             android:layout_height="200dp"
+            android:scaleType="centerCrop"
+            android:visibility="gone"
             android:background="#E0E0E0" />
 
         <!-- Post Actions -->

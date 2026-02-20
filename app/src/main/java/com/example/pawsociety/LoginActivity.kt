@@ -2,85 +2,101 @@ package com.example.pawsociety
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class LoginActivity : AppCompatActivity() {
+
+    private lateinit var viewModel: AuthViewModel
+    private lateinit var progressBar: ProgressBar
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
 
-        // Check if user is already logged in
-        val currentUser = UserDatabase.getCurrentUser(this)
-        if (currentUser != null) {
-            // User is already logged in, go to Home
-            val intent = Intent(this, HomeActivity::class.java)
-            startActivity(intent)
-            finish()
-            return
-        }
+        // Initialize ViewModel
+        viewModel = ViewModelProvider(this)[AuthViewModel::class.java]
 
         val emailInput = findViewById<EditText>(R.id.email_input)
         val passwordInput = findViewById<EditText>(R.id.password_input)
         val loginButton = findViewById<Button>(R.id.login_button)
         val signupButton = findViewById<Button>(R.id.signup_button)
         val forgotPassword = findViewById<TextView>(R.id.forgot_password)
+        progressBar = findViewById(R.id.progress_bar)
+
+        // Check if user is already logged in
+        viewModel.currentUser.observe(this) { user ->
+            if (user != null && MyApplication.isConnectedToEmulator) {
+                // Emulator mode: auto-login
+                navigateToHome()
+                return@observe
+            }
+        }
+
+        // Observe auth result
+        viewModel.authResult.observe(this) { result ->
+            when (result) {
+                is AuthResult.Loading -> {
+                    progressBar.visibility = View.VISIBLE
+                }
+                is AuthResult.Success -> {
+                    progressBar.visibility = View.GONE
+                    Toast.makeText(this, "Login successful!", Toast.LENGTH_SHORT).show()
+                    navigateToHome()
+                }
+                is AuthResult.Error -> {
+                    progressBar.visibility = View.GONE
+                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                }
+                else -> {}
+            }
+        }
 
         loginButton.setOnClickListener {
             val email = emailInput.text.toString().trim()
             val password = passwordInput.text.toString().trim()
 
-            // Validation
             if (email.isEmpty() || password.isEmpty()) {
                 Toast.makeText(this, "Please enter email and password", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            // Try to login
-            val user = UserDatabase.loginUser(this, email, password)
-
-            if (user != null) {
-                // Login successful
-                Toast.makeText(this, "Welcome back, ${user.fullName}!", Toast.LENGTH_SHORT).show()
-                val intent = Intent(this, HomeActivity::class.java)
-                startActivity(intent)
-                finish()
-            } else {
-                // Login failed
-                Toast.makeText(this, "Invalid email or password", Toast.LENGTH_SHORT).show()
-            }
+            viewModel.login(email, password)
         }
 
         signupButton.setOnClickListener {
-            val intent = Intent(this, RegisterActivity::class.java)
-            startActivity(intent)
+            startActivity(Intent(this, RegisterActivity::class.java))
         }
 
         forgotPassword.setOnClickListener {
-            // Show forgot password dialog
-            showForgotPasswordDialog()
+            val email = emailInput.text.toString().trim()
+            if (email.isEmpty()) {
+                Toast.makeText(this, "Enter email above to reset password", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            viewModel.sendPasswordResetEmail(email)
+            lifecycleScope.launch {
+                // Observe the result
+            }
         }
     }
 
-    private fun showForgotPasswordDialog() {
-        // Create a simple dialog for password reset
-        val emailInput = findViewById<EditText>(R.id.email_input)
-        val email = emailInput.text.toString().trim()
+    private fun navigateToHome() {
+        startActivity(Intent(this, HomeActivity::class.java))
+        finish()
+    }
 
-        if (email.isEmpty()) {
-            Toast.makeText(this, "Please enter your email above first", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // Check if email exists
-        if (UserDatabase.checkEmailExists(this, email)) {
-            Toast.makeText(this, "Password reset link would be sent to $email", Toast.LENGTH_LONG).show()
-            // In a real app, you would send an email here
-        } else {
-            Toast.makeText(this, "Email not found in our system", Toast.LENGTH_SHORT).show()
-        }
+    override fun onResume() {
+        super.onResume()
+        viewModel.loadCurrentUser()
     }
 }

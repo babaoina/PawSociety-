@@ -8,8 +8,12 @@ import android.widget.*
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class InboxActivity : BaseNavigationActivity() {
+
+    private val userRepository = UserRepository()
 
     private lateinit var recyclerView: RecyclerView
     private lateinit var inboxAdapter: InboxAdapter
@@ -28,16 +32,18 @@ class InboxActivity : BaseNavigationActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_inbox)
 
-        currentUser = UserDatabase.getCurrentUser(this)
-        if (currentUser == null) {
-            Toast.makeText(this, "Please login to view inbox", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
+        lifecycleScope.launch {
+            currentUser = userRepository.getCurrentUser()
+            if (currentUser == null) {
+                Toast.makeText(this@InboxActivity, "Please login to view inbox", Toast.LENGTH_SHORT).show()
+                finish()
+                return@launch
+            }
 
-        initializeViews()
-        setupClickListeners()
-        loadOtherUsers()
+            initializeViews()
+            setupClickListeners()
+            loadOtherUsers()
+        }
     }
 
     private fun initializeViews() {
@@ -89,14 +95,16 @@ class InboxActivity : BaseNavigationActivity() {
                 inboxAdapter.notifyDataSetChanged()
             }
         } else {
-            val filteredUsers = allUsers.filter {
-                it.username.contains(query, ignoreCase = true)
+            val filteredUsers = allUsers.filter { user ->
+                user.username.contains(query, ignoreCase = true)
             }
 
             if (filteredUsers.isEmpty()) {
                 Toast.makeText(this, "No users found matching '$query'", Toast.LENGTH_SHORT).show()
             } else {
-                inboxAdapter = InboxAdapter(filteredUsers) { user ->
+                val relRepo = RelationshipRepository()
+                val currentId = currentUser?.uid ?: ""
+                inboxAdapter = InboxAdapter(filteredUsers, currentId, relRepo) { user ->
                     openConversation(user)
                 }
                 recyclerView.adapter = inboxAdapter
@@ -128,17 +136,26 @@ class InboxActivity : BaseNavigationActivity() {
     }
 
     private fun loadOtherUsers() {
-        allUsers = UserDatabase.getOtherUsers(this)
+        lifecycleScope.launch {
+            userRepository.getAllUsers().collect { users ->
+                // Check if views are initialized before accessing them
+                if (!::recyclerView.isInitialized) return@collect
 
-        if (allUsers.isEmpty()) {
-            showEmptyState()
-        } else {
-            showUserList()
-            setupAdapter(allUsers)
+                allUsers = users.filter { user -> user.uid != currentUser?.uid }
+
+                if (allUsers.isEmpty()) {
+                    showEmptyState()
+                } else {
+                    showUserList()
+                    setupAdapter(allUsers)
+                }
+            }
         }
     }
 
     private fun showEmptyState() {
+        if (!::recyclerView.isInitialized || !::emptyState.isInitialized) return
+
         recyclerView.visibility = View.GONE
         emptyState.visibility = View.VISIBLE
 
@@ -147,12 +164,16 @@ class InboxActivity : BaseNavigationActivity() {
     }
 
     private fun showUserList() {
+        if (!::recyclerView.isInitialized || !::emptyState.isInitialized) return
+
         recyclerView.visibility = View.VISIBLE
         emptyState.visibility = View.GONE
     }
 
     private fun setupAdapter(users: List<AppUser>) {
-        inboxAdapter = InboxAdapter(users) { user ->
+        val relRepo = RelationshipRepository()
+        val currentId = currentUser?.uid ?: ""
+        inboxAdapter = InboxAdapter(users, currentId, relRepo) { user ->
             openConversation(user)
         }
         recyclerView.adapter = inboxAdapter
@@ -173,7 +194,11 @@ class InboxActivity : BaseNavigationActivity() {
     }
 
     private fun openConversation(user: AppUser) {
-        Toast.makeText(this, "Opening chat with @${user.username}", Toast.LENGTH_SHORT).show()
+        val intent = android.content.Intent(this, ChatActivity::class.java).apply {
+            putExtra("USER_ID", user.uid)
+            putExtra("USER_NAME", user.username)
+        }
+        startActivity(intent)
     }
 
     override fun onResume() {

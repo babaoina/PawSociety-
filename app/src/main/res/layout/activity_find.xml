@@ -29,11 +29,15 @@
             android:layout_weight="1" />
 
         <TextView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:id="@+id/btn_add_pet"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:gravity="center"
-            android:text="⚙️"
-            android:textSize="18sp" />
+            android:text="+"
+            android:textColor="#FFFFFF"
+            android:background="#4CAF50"
+            android:textSize="20sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <!-- Search Bar with White Background and Brown Edges -->
@@ -104,85 +108,7 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Filter Chips with Proper Colors -->
-    <HorizontalScrollView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="12dp"
-        android:scrollbars="none">
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <!-- All Pets - Brown -->
-            <TextView
-                android:id="@+id/chip_all"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:gravity="center"
-                android:text="All Pets"
-                android:textColor="#FFFFFF"
-                android:paddingHorizontal="20dp"
-                android:background="#7A4F2B"
-                android:layout_marginEnd="8dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <!-- Lost - Red -->
-            <TextView
-                android:id="@+id/chip_lost"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:gravity="center"
-                android:text="Lost"
-                android:textColor="#FFFFFF"
-                android:paddingHorizontal="20dp"
-                android:background="#F44336"
-                android:layout_marginEnd="8dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <!-- Found - Green -->
-            <TextView
-                android:id="@+id/chip_found"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:gravity="center"
-                android:text="Found"
-                android:textColor="#FFFFFF"
-                android:paddingHorizontal="20dp"
-                android:background="#4CAF50"
-                android:layout_marginEnd="8dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <!-- For Adoption - Blue -->
-            <TextView
-                android:id="@+id/chip_adoption"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:gravity="center"
-                android:text="Adoption"
-                android:textColor="#FFFFFF"
-                android:paddingHorizontal="20dp"
-                android:background="#2196F3"
-                android:clickable="true"
-                android:focusable="true"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-        </LinearLayout>
-    </HorizontalScrollView>
+    <!-- Filter Chips Removed -->
 
     <!-- Grid of Pet Pictures -->
     <androidx.recyclerview.widget.RecyclerView

@@ -91,6 +91,13 @@
                             android:textColor="#FFFFFF"
                             android:textStyle="bold"
                             android:background="@null" />
+
+                        <ImageView
+                            android:id="@+id/iv_profile_image"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:scaleType="centerCrop"
+                            android:visibility="gone" />
                     </FrameLayout>
                 </LinearLayout>
 

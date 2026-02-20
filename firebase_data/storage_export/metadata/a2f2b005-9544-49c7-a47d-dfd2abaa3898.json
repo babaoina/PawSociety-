@@ -1,0 +1,19 @@
+{
+  "name": "profile_images/7e0bada3-7bdd-4fc0-a878-81069a85240e.jpg",
+  "bucket": "device-streaming-5f25c661.firebasestorage.app",
+  "metageneration": 1,
+  "generation": 1771612661975,
+  "contentType": "application/octet-stream",
+  "storageClass": "STANDARD",
+  "contentDisposition": "inline",
+  "downloadTokens": [
+    "ebe20ab6-4ad7-4f68-bdf5-38be0bcb2967"
+  ],
+  "etag": "7r/LJ3p208Pqv3Cm9hPwEQxKKl4",
+  "customMetadata": {},
+  "timeCreated": "2026-02-20T18:37:41.975Z",
+  "updated": "2026-02-20T18:37:41.975Z",
+  "size": 3086003,
+  "md5Hash": "E+R6PVcdiCEaTvkskE6sxQ==",
+  "crc32c": "366699381"
+}
