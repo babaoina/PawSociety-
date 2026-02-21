@@ -7,6 +7,13 @@ import android.view.View
 import android.widget.*
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.lifecycle.lifecycleScope
+import com.example.pawsociety.api.ApiPost
+import com.example.pawsociety.data.repository.PostRepository
+import com.example.pawsociety.util.SessionManager
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class FindActivity : BaseNavigationActivity() {
 
@@ -18,19 +25,26 @@ class FindActivity : BaseNavigationActivity() {
     private lateinit var chipLost: TextView
     private lateinit var chipFound: TextView
     private lateinit var chipAdoption: TextView
+    private lateinit var sessionManager: SessionManager
+    private val postRepository = PostRepository()
 
     private var currentFilter = "All"
-    private var allPosts = listOf<Post>()
-    private var filteredPosts = listOf<Post>()
+    private var allPosts = listOf<ApiPost>()
+    private var filteredPosts = listOf<ApiPost>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_find)
+        
+        sessionManager = SessionManager(this)
 
         // Check if user is logged in
-        val currentUser = UserDatabase.getCurrentUser(this)
+        val currentUser = sessionManager.getCurrentUser()
         if (currentUser == null) {
             Toast.makeText(this, "Please login to find pets", Toast.LENGTH_SHORT).show()
+            val intent = Intent(this, LoginActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            startActivity(intent)
             finish()
             return
         }
@@ -151,9 +165,25 @@ class FindActivity : BaseNavigationActivity() {
     }
 
     private fun loadPosts() {
-        // Get all posts from database
-        allPosts = UserDatabase.getAllPosts(this)
-        filterPosts()
+        // Fetch posts from API
+         lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    postRepository.getPosts(limit = 100)
+                }
+                
+                if (result.isSuccess) {
+                    allPosts = result.getOrNull()!!
+                    filterPosts()
+                } else {
+                    Toast.makeText(this@FindActivity, "Failed to load posts", Toast.LENGTH_SHORT).show()
+                    showEmptyState()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@FindActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                showEmptyState()
+            }
+        }
     }
 
     private fun filterPosts() {
@@ -163,6 +193,11 @@ class FindActivity : BaseNavigationActivity() {
         }
 
         updateDisplay()
+    }
+
+    private fun showEmptyState() {
+        recyclerView.visibility = View.GONE
+        emptyState.visibility = View.VISIBLE
     }
 
     private fun updateDisplay() {
@@ -183,7 +218,7 @@ class FindActivity : BaseNavigationActivity() {
         }
     }
 
-    private fun showPostPreview(post: Post) {
+    private fun showPostPreview(post: ApiPost) {
         val message = """
             ${post.petName}
             Status: ${post.status}

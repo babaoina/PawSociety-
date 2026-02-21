@@ -20,6 +20,27 @@
             android:layout_marginBottom="24dp"
             android:layout_gravity="center" />
 
+        <!-- Profile Image -->
+        <ImageView
+            android:id="@+id/edit_profile_image"
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:layout_gravity="center"
+            android:layout_marginBottom="16dp"
+            android:src="@android:drawable/ic_menu_gallery"
+            android:scaleType="centerCrop" />
+        
+        <TextView
+            android:id="@+id/btn_change_photo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginBottom="24dp"
+            android:text="Change Photo"
+            android:textColor="#B88B4A"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
         <!-- Last Name -->
         <TextView
             android:layout_width="wrap_content"

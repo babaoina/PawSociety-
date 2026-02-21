@@ -4,6 +4,14 @@
     android:layout_height="match_parent"
     android:background="#F0F0F0">
 
+    <ImageView
+        android:id="@+id/post_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:contentDescription="Post image"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/post_content"
         android:layout_width="match_parent"

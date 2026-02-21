@@ -9,19 +9,14 @@
     android:focusable="true"
     android:foreground="?android:attr/selectableItemBackground">
 
-    <!-- Image Placeholder -->
-    <TextView
-        android:id="@+id/image_placeholder"
+    <!-- Post Image -->
+    <ImageView
+        android:id="@+id/post_image"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:gravity="center"
-        android:text="🐶\nM"
-        android:textColor="#FFFFFF"
-        android:textSize="18sp"
-        android:background="#FF6B35"
-        android:padding="4dp"
-        android:lines="2"
-        android:textStyle="bold" />
+        android:scaleType="centerCrop"
+        android:contentDescription="Post image"
+        android:visibility="visible" />
 
     <!-- Status Badge - FIXED with smaller text -->
     <TextView

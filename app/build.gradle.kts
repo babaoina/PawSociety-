@@ -1,9 +1,8 @@
 plugins {
-
-    id("org.jetbrains.kotlin.android")
     id("com.android.application")
+    id("org.jetbrains.kotlin.android")
     id("com.google.gms.google-services")
-    // NO Firebase for now
+    kotlin("kapt")
 }
 
 android {
@@ -45,8 +44,9 @@ android {
 }
 
 dependencies {
-
-    implementation(platform("com.google.firebase:firebase-bom:34.9.0"))
+    // Firebase Authentication (with explicit version)
+    implementation("com.google.firebase:firebase-auth:22.3.1")
+    implementation("com.google.firebase:firebase-auth-ktx:22.3.1")
 
     // Core Android dependencies
     implementation("androidx.core:core-ktx:1.12.0")
@@ -57,10 +57,7 @@ dependencies {
     // ViewPager2 for profile tabs
     implementation("androidx.viewpager2:viewpager2:1.0.0")
 
-    // For password hashing
-    implementation("at.favre.lib:bcrypt:0.10.2")
-
-    // MVVM Dependencies - ADD THESE
+    // MVVM Dependencies
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.6.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
@@ -68,6 +65,19 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+
+    // Retrofit for API calls
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+    // Gson for JSON parsing
+    implementation("com.google.code.gson:gson:2.10.1")
+
+    // Image loading
+    implementation("com.github.bumptech.glide:glide:4.16.0")
+    kapt("com.github.bumptech.glide:compiler:4.16.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

@@ -89,6 +89,17 @@
                 android:textColor="#7A4F2B"
                 android:textSize="14sp"
                 android:layout_marginTop="8dp" />
+            
+            <TextView
+                android:id="@+id/tv_photo_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0/5"
+                android:textColor="#B88B4A"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginTop="4dp"
+                android:visibility="gone" />
 
         </LinearLayout>
 

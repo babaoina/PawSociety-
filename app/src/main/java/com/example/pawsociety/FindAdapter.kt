@@ -5,12 +5,15 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
+import com.example.pawsociety.api.ApiPost
 
 class FindAdapter(
-    private val posts: List<Post>,
-    private val onItemClick: (Post) -> Unit
+    private val posts: List<ApiPost>,
+    private val onItemClick: (ApiPost) -> Unit
 ) : RecyclerView.Adapter<FindAdapter.FindViewHolder>() {
 
     private val colors = listOf(
@@ -21,7 +24,7 @@ class FindAdapter(
 
     class FindViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val container: FrameLayout = itemView.findViewById(R.id.post_container)
-        val imagePlaceholder: TextView = itemView.findViewById(R.id.image_placeholder)
+        val postImage: ImageView = itemView.findViewById(R.id.post_image)
         val petName: TextView = itemView.findViewById(R.id.pet_name)
         val statusBadge: TextView = itemView.findViewById(R.id.status_badge)
     }
@@ -36,27 +39,53 @@ class FindAdapter(
         try {
             val post = posts[position]
 
-            // Set placeholder text
-            val firstLetter = if (post.petName.isNotEmpty()) {
-                post.petName.first().toString()
+            // Load post image if available
+            if (!post.imageUrls.isNullOrEmpty() && post.imageUrls.isNotEmpty()) {
+                val imageUrl = post.imageUrls[0]
+                val fullImageUrl = if (imageUrl.startsWith("http")) {
+                    imageUrl
+                } else {
+                    "${com.example.pawsociety.api.ApiClient.FULL_BASE_URL}$imageUrl"
+                }
+                
+                holder.postImage.visibility = View.VISIBLE
+                Glide.with(holder.itemView.context)
+                    .load(fullImageUrl)
+                    .centerCrop()
+                    .placeholder(android.R.drawable.ic_menu_gallery)
+                    .error(android.R.drawable.ic_menu_report_image)
+                    .into(holder.postImage)
             } else {
-                "?"
+                // Show placeholder with emoji and first letter
+                holder.postImage.visibility = View.GONE
+                
+                val firstLetter = if (post.petName.isNotEmpty()) {
+                    post.petName.first().toString()
+                } else {
+                    "?"
+                }
+
+                val emoji = when {
+                    post.petType.contains("dog", ignoreCase = true) -> "🐶"
+                    post.petType.contains("cat", ignoreCase = true) -> "🐱"
+                    post.petType.contains("bird", ignoreCase = true) -> "🐦"
+                    post.petType.contains("rabbit", ignoreCase = true) -> "🐰"
+                    post.petType.contains("fish", ignoreCase = true) -> "🐟"
+                    else -> "🐾"
+                }
+
+                // Create placeholder drawable
+                val placeholderDrawable = android.graphics.drawable.LayerDrawable(
+                    arrayOf(
+                        android.graphics.drawable.ColorDrawable(Color.parseColor(colors[Math.abs(post.postId.hashCode()) % colors.size])),
+                        android.graphics.drawable.InsetDrawable(
+                            android.graphics.drawable.ColorDrawable(Color.TRANSPARENT),
+                            0, 0, 0, 0
+                        )
+                    )
+                )
+                holder.postImage.setImageDrawable(placeholderDrawable)
             }
-
-            val emoji = when {
-                post.petType.contains("dog", ignoreCase = true) -> "🐶"
-                post.petType.contains("cat", ignoreCase = true) -> "🐱"
-                post.petType.contains("bird", ignoreCase = true) -> "🐦"
-                post.petType.contains("rabbit", ignoreCase = true) -> "🐰"
-                post.petType.contains("fish", ignoreCase = true) -> "🐟"
-                else -> "🐾"
-            }
-
-            holder.imagePlaceholder.text = "$emoji\n$firstLetter"
-
-            // Set color based on post ID
-            val colorIndex = Math.abs(post.postId.hashCode()) % colors.size
-            holder.imagePlaceholder.setBackgroundColor(Color.parseColor(colors[colorIndex]))
 
             // Set pet name
             holder.petName.text = post.petName

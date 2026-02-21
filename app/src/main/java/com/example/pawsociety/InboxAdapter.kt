@@ -6,10 +6,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.example.pawsociety.api.ApiUser
 
 class InboxAdapter(
-    private val users: List<AppUser>,
-    private val onUserClick: (AppUser) -> Unit
+    private val users: List<ApiUser>,
+    private val onUserClick: (ApiUser) -> Unit
 ) : RecyclerView.Adapter<InboxAdapter.InboxViewHolder>() {
 
     private val colors = listOf(
@@ -36,7 +37,9 @@ class InboxAdapter(
             "?"
         }
 
-        val colorIndex = Math.abs(user.uid.hashCode()) % colors.size
+        // Use username for color if firebaseUid is null
+        val hashString = user.firebaseUid ?: user.username ?: "unknown"
+        val colorIndex = Math.abs(hashString.hashCode()) % colors.size
         holder.profileIcon.text = firstLetter
         holder.profileIcon.setBackgroundColor(Color.parseColor(colors[colorIndex]))
         holder.profileIcon.setTextColor(Color.WHITE)

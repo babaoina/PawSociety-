@@ -14,7 +14,14 @@ import android.widget.*
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import com.bumptech.glide.Glide
+import com.example.pawsociety.api.ApiPost
+import com.example.pawsociety.data.repository.CommentRepository
+import com.example.pawsociety.data.repository.PostRepository
+import com.example.pawsociety.util.SessionManager
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -24,14 +31,33 @@ class HomeActivity : BaseNavigationActivity() {
     private lateinit var postsContainer: LinearLayout
     private lateinit var emptyState: LinearLayout
     private lateinit var progressBar: ProgressBar
-    private var currentUser: AppUser? = null
+    private lateinit var sessionManager: SessionManager
+    private val postRepository = PostRepository()
+    private val commentRepository = CommentRepository()
+    private var currentUser: com.example.pawsociety.api.ApiUser? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
 
+        sessionManager = SessionManager(this)
+
+        // Check if user is logged in BEFORE anything else
+        val currentUser = sessionManager.getCurrentUser()
+        if (currentUser == null) {
+            println("⚠️ No user session found, redirecting to login")
+            val intent = Intent(this, LoginActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            startActivity(intent)
+            finish()
+            return
+        }
+        
+        println("✅ User logged in: ${currentUser.username}")
+
         // Initialize ViewModel
         viewModel = ViewModelProvider(this)[HomeViewModel::class.java]
+        viewModel.setSessionManager(sessionManager)
 
         // Initialize views
         postsContainer = findViewById(R.id.posts_container)
@@ -76,7 +102,7 @@ class HomeActivity : BaseNavigationActivity() {
         })
     }
 
-    private fun displayPosts(posts: List<Post>) {
+    private fun displayPosts(posts: List<ApiPost>) {
         postsContainer.removeAllViews()
 
         if (posts.isEmpty()) {
@@ -93,7 +119,7 @@ class HomeActivity : BaseNavigationActivity() {
         }
     }
 
-    private fun createPostView(post: Post) {
+    private fun createPostView(post: ApiPost) {
         val inflater = LayoutInflater.from(this)
         val postView = inflater.inflate(R.layout.item_post, postsContainer, false)
 
@@ -107,6 +133,7 @@ class HomeActivity : BaseNavigationActivity() {
         val dateText = postView.findViewById<TextView>(R.id.post_date)
         val btnMore = postView.findViewById<TextView>(R.id.btn_more)
         val btnLike = postView.findViewById<ImageView>(R.id.btn_like)
+        val tvLikeCount = postView.findViewById<TextView>(R.id.tv_like_count)
         val btnComment = postView.findViewById<TextView>(R.id.btn_comment)
         val btnShare = postView.findViewById<TextView>(R.id.btn_share)
 
@@ -117,14 +144,20 @@ class HomeActivity : BaseNavigationActivity() {
         statusText.text = post.status
         descriptionText.text = post.description
         contactText.text = post.contactInfo
-        dateText.text = post.createdAt
+        
+        // Display like count
+        tvLikeCount.text = post.likesCount.toString()
+        println("   ✓ Set like count to: ${post.likesCount}")
+        
+        // Display time ago
+        dateText.text = getTimeAgo(post.createdAt)
 
         // Set status color and reward
         when (post.status) {
             "Lost" -> {
                 statusText.setTextColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
                 // Show formatted reward for Lost posts
-                if (post.reward.isNotEmpty()) {
+                if (!post.reward.isNullOrEmpty()) {
                     val formattedReward = formatReward(post.reward)
 
                     // Check if original exceeded limit
@@ -151,6 +184,27 @@ class HomeActivity : BaseNavigationActivity() {
             }
         }
 
+        // Load post image if available
+        val postImageView = postView.findViewById<ImageView>(R.id.post_image)
+        if (!post.imageUrls.isNullOrEmpty() && post.imageUrls.isNotEmpty()) {
+            val imageUrl = post.imageUrls[0] // Load first image
+            val fullImageUrl = if (imageUrl.startsWith("http")) {
+                imageUrl
+            } else {
+                // Prepend backend URL for relative paths
+                "${com.example.pawsociety.api.ApiClient.FULL_BASE_URL}$imageUrl"
+            }
+            
+            postImageView.visibility = View.VISIBLE
+            Glide.with(this)
+                .load(fullImageUrl)
+                .placeholder(android.R.drawable.ic_menu_gallery)
+                .error(android.R.drawable.ic_menu_report_image)
+                .into(postImageView)
+        } else {
+            postImageView.visibility = View.GONE
+        }
+
         // Observe favorite status for this post
         viewModel.favoriteStatus.observe(this, Observer { favMap ->
             val isFav = favMap[post.postId]
@@ -170,12 +224,27 @@ class HomeActivity : BaseNavigationActivity() {
 
         // Like button click listener
         btnLike.setOnClickListener {
-            if (currentUser == null) {
+            val currentCurrentUser = currentUser
+            if (currentCurrentUser == null) {
                 Toast.makeText(this, "Please login to like posts", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             val isLiked = btnLike.tag == "liked"
-            viewModel.toggleFavorite(post, isLiked)
+            
+            // Call API to like/unlike
+            lifecycleScope.launch {
+                try {
+                    val result = postRepository.likePost(post.postId, currentCurrentUser.firebaseUid)
+                    if (result.isSuccess) {
+                        // Refresh the post to show updated like count
+                        viewModel.loadPosts()
+                    } else {
+                        Toast.makeText(this@HomeActivity, "Failed to like post", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(this@HomeActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
 
         // Comment button
@@ -215,7 +284,7 @@ class HomeActivity : BaseNavigationActivity() {
         }
     }
 
-    private fun showCommentsDialog(post: Post) {
+    private fun showCommentsDialog(post: ApiPost) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_comments, null)
 
         val postIcon = dialogView.findViewById<TextView>(R.id.comment_post_icon)
@@ -264,12 +333,13 @@ class HomeActivity : BaseNavigationActivity() {
                     Toast.makeText(this, "Please login to comment", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
+                // Add comment via API
                 viewModel.addComment(post.postId, text)
                 commentInput.text.clear()
                 Toast.makeText(this, "Comment posted!", Toast.LENGTH_SHORT).show()
-                // Refresh comments
+                // Refresh comments from API
                 commentsContainer.removeAllViews()
-                loadComments(commentsContainer, post.postId)
+                loadCommentsFromApi(commentsContainer, post.postId)
             } else {
                 Toast.makeText(this, "Please enter a comment", Toast.LENGTH_SHORT).show()
             }
@@ -278,98 +348,198 @@ class HomeActivity : BaseNavigationActivity() {
         dialog.show()
     }
 
+    private fun loadCommentsFromApi(container: LinearLayout, postId: String) {
+        println("💬 Loading comments for post: $postId")
+        // Show loading
+        container.removeAllViews()
+        val loadingView = TextView(this)
+        loadingView.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        loadingView.gravity = android.view.Gravity.CENTER
+        loadingView.text = "Loading comments..."
+        loadingView.setTextColor(Color.parseColor("#999999"))
+        container.addView(loadingView)
+
+        // Fetch comments from API
+        lifecycleScope.launch {
+            try {
+                val result = commentRepository.getComments(postId)
+                container.removeAllViews()
+
+                if (result.isSuccess) {
+                    val apiComments = result.getOrNull()!!
+                    println("✅ Loaded ${apiComments.size} comments for post $postId")
+
+                    if (apiComments.isEmpty()) {
+                        val emptyView = TextView(this@HomeActivity)
+                        emptyView.layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        )
+                        emptyView.gravity = android.view.Gravity.CENTER
+                        emptyView.text = "No comments yet\nBe the first to comment!"
+                        emptyView.setTextColor(Color.parseColor("#999999"))
+                        emptyView.textSize = 14f
+                        emptyView.setPadding(0, 50, 0, 50)
+                        container.addView(emptyView)
+                        return@launch
+                    }
+
+                    // Convert ApiComment to Comment for display
+                    for (apiComment in apiComments) {
+                        println("   - Comment: ${apiComment.userName}: ${apiComment.text}, likes: ${apiComment.likesCount}")
+                        addCommentView(container, Comment(
+                            commentId = apiComment.commentId,
+                            postId = apiComment.postId,
+                            userId = apiComment.firebaseUid ?: "",
+                            userName = apiComment.userName ?: "Unknown",
+                            userImageUrl = apiComment.userImageUrl ?: "",
+                            text = apiComment.text ?: "",
+                            likes = emptyList(),
+                            likesCount = apiComment.likesCount,
+                            createdAt = apiComment.createdAt ?: ""
+                        ))
+                    }
+                } else {
+                    val errorMsg = result.exceptionOrNull()?.message ?: "Unknown error"
+                    println("❌ Failed to load comments: $errorMsg")
+                    loadingView.text = "Failed to load comments"
+                }
+            } catch (e: Exception) {
+                println("❌ Error loading comments: ${e.message}")
+                e.printStackTrace()
+                loadingView.text = "Error: ${e.message}"
+            }
+        }
+    }
+
     private fun loadComments(container: LinearLayout, postId: String) {
-        val comments = UserDatabase.getCommentsForPost(this, postId)
-
-        if (comments.isEmpty()) {
-            val emptyView = TextView(this)
-            emptyView.layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            emptyView.gravity = android.view.Gravity.CENTER
-            emptyView.text = "No comments yet\nBe the first to comment!"
-            emptyView.setTextColor(Color.parseColor("#999999"))
-            emptyView.textSize = 14f
-            emptyView.setPadding(0, 50, 0, 50)
-            container.addView(emptyView)
-            return
-        }
-
-        for (comment in comments) {
-            addCommentView(container, comment)
-        }
+        // Use API instead of local database
+        loadCommentsFromApi(container, postId)
     }
 
     private fun addCommentView(container: LinearLayout, comment: Comment) {
         val commentView = layoutInflater.inflate(R.layout.item_comment, container, false)
 
-        val userIcon = commentView.findViewById<TextView>(R.id.comment_user_icon)
+        val userIcon = commentView.findViewById<ImageView>(R.id.comment_user_icon)
         val userName = commentView.findViewById<TextView>(R.id.comment_user_name)
         val commentText = commentView.findViewById<TextView>(R.id.comment_text)
         val commentTime = commentView.findViewById<TextView>(R.id.comment_time)
         val likeButton = commentView.findViewById<TextView>(R.id.comment_like_button)
         val likeCount = commentView.findViewById<TextView>(R.id.comment_like_count)
 
+        println("📝 Adding comment view - userName: ${comment.userName}, text: ${comment.text}")
+        
+        // Check if views are found
+        if (userIcon == null || userName == null || commentText == null || commentTime == null) {
+            println("❌ One or more views not found in item_comment.xml!")
+            return
+        }
+
         val firstLetter = if (comment.userName.isNotEmpty()) {
             comment.userName.first().toString().uppercase()
         } else {
             "?"
         }
-        userIcon.text = firstLetter
-
-        val colors = listOf("#7A4F2B", "#B88B4A", "#4CAF50", "#2196F3", "#FF9800")
-        val colorIndex = Math.abs(comment.userId.hashCode()) % colors.size
-        userIcon.setBackgroundColor(Color.parseColor(colors[colorIndex]))
+        
+        // Load profile image if available, otherwise show colored circle with initial
+        if (!comment.userImageUrl.isNullOrEmpty()) {
+            val fullImageUrl = if (comment.userImageUrl.startsWith("http")) {
+                comment.userImageUrl
+            } else {
+                "${com.example.pawsociety.api.ApiClient.FULL_BASE_URL}${comment.userImageUrl}"
+            }
+            
+            println("   ✓ Loading profile image: $fullImageUrl")
+            
+            // Load image with Glide
+            Glide.with(this)
+                .load(fullImageUrl)
+                .circleCrop()
+                .placeholder(android.R.drawable.ic_menu_gallery)
+                .error(android.R.drawable.ic_menu_report_image)
+                .into(userIcon)
+        } else {
+            // Show colored circle with initial as fallback
+            userIcon.setImageResource(android.R.drawable.ic_menu_gallery)
+            val colors = listOf("#7A4F2B", "#B88B4A", "#4CAF50", "#2196F3", "#FF9800")
+            val colorIndex = Math.abs((comment.userId + comment.commentId).hashCode()) % colors.size
+            userIcon.setBackgroundColor(Color.parseColor(colors[colorIndex]))
+            println("   ✓ Using colored circle with initial: $firstLetter")
+        }
 
         userName.text = comment.userName
+        println("   ✓ Set userName to: '${comment.userName}'")
+        
         commentText.text = comment.text
+        println("   ✓ Set commentText to: '${comment.text}'")
 
         val timeAgo = getTimeAgo(comment.createdAt)
         commentTime.text = timeAgo
+        println("   ✓ Set commentTime to: '$timeAgo' (from: ${comment.createdAt})")
 
-        val isLiked = currentUser != null && comment.likes.contains(currentUser!!.uid)
+        val isLiked = currentUser != null && comment.likes.contains(currentUser!!.firebaseUid)
         if (isLiked) {
-            likeButton.setTextColor(Color.parseColor("#FF6B35"))
-            likeButton.tag = "liked"
+            likeButton?.setTextColor(Color.parseColor("#FF6B35"))
+            likeButton?.tag = "liked"
         } else {
-            likeButton.setTextColor(Color.parseColor("#999999"))
-            likeButton.tag = "unliked"
+            likeButton?.setTextColor(Color.parseColor("#999999"))
+            likeButton?.tag = "unliked"
         }
+        println("   ✓ Set likeButton color")
 
-        likeCount.text = comment.likes.size.toString()
+        likeCount?.text = comment.likesCount.toString()
+        println("   ✓ Set likeCount to: '${comment.likesCount}'")
 
-        likeButton.setOnClickListener {
-            if (currentUser == null) {
-                Toast.makeText(this, "Please login to like comments", Toast.LENGTH_SHORT).show()
+        likeButton?.setOnClickListener {
+            val currentCurrentUser = currentUser
+            if (currentCurrentUser == null) {
+                Toast.makeText(this@HomeActivity, "Please login to like comments", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            val success = UserDatabase.likeComment(this, comment.postId, comment.commentId, currentUser!!.uid)
-
-            if (success) {
-                val liked = likeButton.tag == "liked"
-                if (liked) {
-                    likeButton.setTextColor(Color.parseColor("#999999"))
-                    likeButton.tag = "unliked"
-                    likeCount.text = (comment.likes.size - 1).toString()
-                } else {
-                    likeButton.setTextColor(Color.parseColor("#FF6B35"))
-                    likeButton.tag = "liked"
-                    likeCount.text = (comment.likes.size + 1).toString()
+            // Call API to like/unlike comment
+            lifecycleScope.launch {
+                try {
+                    val result = commentRepository.likeComment(comment.commentId, currentCurrentUser.firebaseUid)
+                    if (result.isSuccess) {
+                        // Refresh the comments in the current container
+                        container.removeAllViews()
+                        loadCommentsFromApi(container, comment.postId)
+                    } else {
+                        Toast.makeText(this@HomeActivity, "Failed to like comment", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(this@HomeActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
 
         container.addView(commentView)
+        println("✅ Comment view added to container")
     }
 
     private fun getTimeAgo(dateTime: String): String {
         return try {
-            val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-            val date = format.parse(dateTime)
+            // Try ISO format first (from MongoDB)
+            var date: Date? = null
+            try {
+                val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault())
+                isoFormat.timeZone = TimeZone.getTimeZone("UTC")
+                date = isoFormat.parse(dateTime)
+            } catch (e: Exception) {
+                // Try regular format
+                try {
+                    val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                    date = format.parse(dateTime)
+                } catch (e2: Exception) {
+                    // Ignore
+                }
+            }
+            
             val now = Date()
-
             if (date != null) {
                 val diff = now.time - date.time
                 val seconds = diff / 1000
@@ -391,7 +561,7 @@ class HomeActivity : BaseNavigationActivity() {
         }
     }
 
-    private fun showPostOptions(post: Post, btnLike: ImageView) {
+    private fun showPostOptions(post: ApiPost, btnLike: ImageView) {
         val dialogView = layoutInflater.inflate(R.layout.post_menu_instagram, null)
 
         val menuUsername = dialogView.findViewById<TextView>(R.id.menu_username)
@@ -410,7 +580,7 @@ class HomeActivity : BaseNavigationActivity() {
         menuUsername.text = post.userName
         menuPostInfo.text = "${post.petName} • ${post.status}"
 
-        if (currentUser != null && post.userId == currentUser!!.uid) {
+        if (currentUser != null && post.firebaseUid == currentUser!!.firebaseUid) {
             optionDelete.visibility = View.VISIBLE
         }
 
@@ -513,7 +683,7 @@ class HomeActivity : BaseNavigationActivity() {
         dialog.show()
     }
 
-    private fun showUndoSnackbar(post: Post) {
+    private fun showUndoSnackbar(post: ApiPost) {
         val view = findViewById<View>(android.R.id.content)
         val snackbar = Snackbar.make(view, "Post hidden", Snackbar.LENGTH_LONG)
         snackbar.setAction("Undo") {
@@ -522,7 +692,7 @@ class HomeActivity : BaseNavigationActivity() {
         snackbar.show()
     }
 
-    private fun showWhySeeingDialog(post: Post) {
+    private fun showWhySeeingDialog(post: ApiPost) {
         val message = """
             You're seeing this post because:
             
@@ -538,16 +708,13 @@ class HomeActivity : BaseNavigationActivity() {
             .show()
     }
 
-    private fun showAboutAccountDialog(post: Post) {
-        val user = UserDatabase.getUserById(this, post.userId)
+    private fun showAboutAccountDialog(post: ApiPost) {
         val message = """
             About @${post.userName}
-            
-            📝 Bio: ${user?.bio ?: "No bio"}
-            📍 Location: ${user?.location ?: "Not set"}
-            📅 Joined: ${user?.createdAt ?: "Unknown"}
-            🐾 Posts: ${UserDatabase.getAllPosts(this).count { it.userId == post.userId }}
-            
+
+            📝 Bio: ${currentUser?.bio ?: "No bio"}
+            📍 Location: ${currentUser?.location ?: "Not set"}
+
             This account posts about pets and rescue stories.
         """.trimIndent()
 
@@ -558,7 +725,7 @@ class HomeActivity : BaseNavigationActivity() {
             .show()
     }
 
-    private fun showReportDialog(post: Post) {
+    private fun showReportDialog(post: ApiPost) {
         val options = arrayOf("Spam", "Inappropriate", "False information", "Scam", "Harassment", "Other")
 
         AlertDialog.Builder(this)
@@ -570,8 +737,8 @@ class HomeActivity : BaseNavigationActivity() {
             .show()
     }
 
-    private fun showPostDetails(post: Post) {
-        val rewardText = if (post.reward.isNotEmpty()) {
+    private fun showPostDetails(post: ApiPost) {
+        val rewardText = if (!post.reward.isNullOrEmpty()) {
             val digitsOnly = post.reward.replace("[^0-9]".toRegex(), "")
             val originalNumber = if (digitsOnly.isNotEmpty()) digitsOnly.toLong() else 0
             val formattedReward = formatReward(post.reward)
@@ -601,7 +768,7 @@ class HomeActivity : BaseNavigationActivity() {
         Toast.makeText(this, details, Toast.LENGTH_LONG).show()
     }
 
-    private fun sharePost(post: Post) {
+    private fun sharePost(post: ApiPost) {
         val shareText = """
             Check out this pet on PawSociety!
             

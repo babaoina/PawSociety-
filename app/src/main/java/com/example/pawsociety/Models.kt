@@ -42,6 +42,7 @@ data class Comment(
     val userImageUrl: String = "",
     val text: String = "",
     val likes: List<String> = emptyList(),
+    val likesCount: Int = 0,
     val createdAt: String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
 )
 

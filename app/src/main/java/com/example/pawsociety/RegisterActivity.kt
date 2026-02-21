@@ -6,9 +6,14 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.widget.Button
 import android.widget.EditText
-import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.pawsociety.api.ApiUser
+import com.example.pawsociety.data.repository.AuthRepository
+import com.example.pawsociety.util.FirebaseAuthHelper
+import com.example.pawsociety.util.SessionManager
+import kotlinx.coroutines.launch
 
 class RegisterActivity : AppCompatActivity() {
 
@@ -20,26 +25,21 @@ class RegisterActivity : AppCompatActivity() {
     private lateinit var etPassword: EditText
     private lateinit var etConfirmPassword: EditText
     private lateinit var etPhone: EditText
+    
+    private val authRepository = AuthRepository()
+    private lateinit var sessionManager: SessionManager
+
+    private var isCreatingAccount = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_register)
+        
+        sessionManager = SessionManager(this)
 
         initializeViews()
         setupValidationListeners()
-
-        val backButton = findViewById<Button>(R.id.btn_back)
-        val createAccountButton = findViewById<Button>(R.id.btn_create_account)
-
-        backButton.setOnClickListener {
-            finish()
-        }
-
-        createAccountButton.setOnClickListener {
-            if (validateAllFields()) {
-                createAccount()
-            }
-        }
+        setupClickListeners()
     }
 
     private fun initializeViews() {
@@ -51,6 +51,21 @@ class RegisterActivity : AppCompatActivity() {
         etPassword = findViewById(R.id.et_password)
         etConfirmPassword = findViewById(R.id.et_confirm_password)
         etPhone = findViewById(R.id.et_phone)
+    }
+
+    private fun setupClickListeners() {
+        val backButton = findViewById<Button>(R.id.btn_back)
+        val createAccountButton = findViewById<Button>(R.id.btn_create_account)
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        createAccountButton.setOnClickListener {
+            if (!isCreatingAccount && validateAllFields()) {
+                createAccount()
+            }
+        }
     }
 
     private fun setupValidationListeners() {
@@ -345,6 +360,11 @@ class RegisterActivity : AppCompatActivity() {
     }
 
     private fun createAccount() {
+        isCreatingAccount = true
+        val createAccountButton = findViewById<Button>(R.id.btn_create_account)
+        createAccountButton.isEnabled = false
+        createAccountButton.text = "Creating Account..."
+
         val lastName = etLastName.text.toString().trim()
         val firstName = etFirstName.text.toString().trim()
         val middleInitial = etMiddleInitial.text.toString().trim()
@@ -358,32 +378,110 @@ class RegisterActivity : AppCompatActivity() {
         val email = etEmail.text.toString().trim()
         val password = etPassword.text.toString()
         val phone = etPhone.text.toString().trim()
-        val location = "" // Empty location since we removed it
 
-        // Create AppUser object
-        val user = AppUser(
-            fullName = fullName,
-            username = username,
-            email = email,
-            phone = phone,
-            location = location
-        )
+        lifecycleScope.launch {
+            try {
+                // Step 1: Register with Firebase
+                println("🔐 Starting Firebase registration for: $email")
+                val firebaseResult = FirebaseAuthHelper.registerWithEmail(email, password)
 
-        // Register user
-        val success = UserDatabase.registerUser(this, user, password)
+                if (firebaseResult.isFailure) {
+                    val error = firebaseResult.exceptionOrNull()?.message ?: "Registration failed"
+                    println("❌ Firebase registration failed: $error")
+                    showError(getFirebaseAuthErrorMessage(error))
+                    isCreatingAccount = false
+                    createAccountButton.isEnabled = true
+                    createAccountButton.text = "Create Account"
+                    return@launch
+                }
 
-        if (success) {
-            Toast.makeText(this, "Account created successfully!", Toast.LENGTH_SHORT).show()
+                val firebaseUser = firebaseResult.getOrNull()!!
+                println("✅ Firebase registration successful! UID: ${firebaseUser.uid}")
 
-            // Auto login after registration
-            UserDatabase.loginUser(this, email, password)
+                // Step 2: Create user in MongoDB via backend
+                println("🌐 Creating user in backend...")
+                val backendResult = authRepository.firebaseLogin(
+                    firebaseUid = firebaseUser.uid,
+                    email = firebaseUser.email ?: email,
+                    username = username,
+                    fullName = fullName,
+                    phone = phone
+                )
 
-            // Go to Home
-            val intent = Intent(this, HomeActivity::class.java)
-            startActivity(intent)
-            finish()
-        } else {
-            Toast.makeText(this, "Email or username already exists", Toast.LENGTH_SHORT).show()
+                if (backendResult.isFailure) {
+                    val error = backendResult.exceptionOrNull()?.message ?: "Failed to connect to server"
+                    println("❌ Backend registration failed: $error")
+                    // Firebase succeeded but backend failed - create local session
+                    val localUser = com.example.pawsociety.api.ApiUser(
+                        firebaseUid = firebaseUser.uid,
+                        email = firebaseUser.email ?: email,
+                        username = username,
+                        fullName = fullName
+                    )
+                    sessionManager.saveUserSession(localUser)
+                    println("⚠️ Saved local session, proceeding to home...")
+                    
+                    Toast.makeText(
+                        this@RegisterActivity,
+                        "Account created! (Offline mode)",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    
+                    // Navigate to Home
+                    val intent = Intent(this@RegisterActivity, HomeActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    startActivity(intent)
+                    finish()
+                    return@launch
+                }
+
+                val apiUser = backendResult.getOrNull()!!
+                println("✅ Backend user created! Username: ${apiUser.username}")
+
+                // Step 3: Send email verification
+                FirebaseAuthHelper.sendEmailVerification()
+                println("📧 Email verification sent")
+
+                // Step 4: Save session
+                sessionManager.saveUserSession(apiUser)
+                println("💾 Session saved")
+
+                Toast.makeText(
+                    this@RegisterActivity,
+                    "Account created successfully! Please check your email to verify.",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                // Navigate to Home
+                val intent = Intent(this@RegisterActivity, HomeActivity::class.java)
+                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                startActivity(intent)
+                finish()
+
+            } catch (e: Exception) {
+                println("❌ Unexpected error: ${e.message}")
+                e.printStackTrace()
+                showError(e.message ?: "An unexpected error occurred")
+            } finally {
+                isCreatingAccount = false
+                createAccountButton.isEnabled = true
+                createAccountButton.text = "Create Account"
+            }
         }
+    }
+    
+    private fun getFirebaseAuthErrorMessage(firebaseError: String): String {
+        return when {
+            firebaseError.contains("ERROR_EMAIL_ALREADY_IN_USE") -> "This email is already registered"
+            firebaseError.contains("ERROR_INVALID_EMAIL") -> "Invalid email address"
+            firebaseError.contains("ERROR_WEAK_PASSWORD") -> "Password is too weak"
+            firebaseError.contains("ERROR_USER_DISABLED") -> "This account has been disabled"
+            firebaseError.contains("ERROR_TOO_MANY_REQUESTS") -> "Too many attempts. Please try again later."
+            else -> firebaseError
+        }
+    }
+    
+    private fun showError(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 }

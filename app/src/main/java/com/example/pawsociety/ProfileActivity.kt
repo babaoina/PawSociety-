@@ -10,11 +10,35 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import com.bumptech.glide.Glide
+import com.example.pawsociety.api.ApiPost
+import com.example.pawsociety.api.ApiUser
+import com.example.pawsociety.data.repository.UploadRepository
+import com.example.pawsociety.util.FileHelper
+import com.example.pawsociety.util.SessionManager
+import kotlinx.coroutines.launch
 
 class ProfileActivity : BaseNavigationActivity() {
 
-    private var currentUser: AppUser? = null
+    private lateinit var viewModel: ProfileViewModel
+    private lateinit var sessionManager: SessionManager
+    private val uploadRepository = UploadRepository()
+    private var currentUser: ApiUser? = null
+    private var selectedProfileImageUri: android.net.Uri? = null
+    
+    private val imagePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            selectedProfileImageUri = it
+            // Show preview in dialog if dialog is open
+            findViewById<ImageView>(R.id.edit_profile_image)?.let { imageView ->
+                imageView.setImageURI(it)
+            }
+        }
+    }
     private var currentTab = "posts" // "posts" or "favorites"
     private val highlights = mutableListOf<Highlight>() // Dynamic highlights list
 
@@ -24,8 +48,13 @@ class ProfileActivity : BaseNavigationActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_profile)
+        
+        sessionManager = SessionManager(this)
+        viewModel = ViewModelProvider(this)[ProfileViewModel::class.java]
+        viewModel.setSessionManager(sessionManager)
 
-        currentUser = UserDatabase.getCurrentUser(this)
+        // Check if user is logged in
+        currentUser = sessionManager.getCurrentUser()
         if (currentUser == null) {
             Toast.makeText(this, "Please login first", Toast.LENGTH_SHORT).show()
             val intent = Intent(this, LoginActivity::class.java)
@@ -34,8 +63,21 @@ class ProfileActivity : BaseNavigationActivity() {
             return
         }
 
-        updateProfileWithUserData(currentUser!!)
-        setupClickListeners(currentUser!!)
+        // Observe user data from ViewModel (API)
+        viewModel.user.observe(this) { user ->
+            if (user != null) {
+                println("📱 ProfileActivity: Received user data - username: ${user.username}, image: ${user.profileImageUrl}")
+                currentUser = user
+                updateProfileWithUserData(user)
+                setupClickListeners(user)
+            } else {
+                println("⚠️ ProfileActivity: User data is null")
+            }
+        }
+        
+        // Force load fresh data from API
+        viewModel.loadUserData()
+        
         loadHighlights() // Load saved highlights
 
         // Set up the big plus button
@@ -49,40 +91,51 @@ class ProfileActivity : BaseNavigationActivity() {
         }
     }
 
-    private fun updateProfileWithUserData(user: AppUser) {
+    private fun updateProfileWithUserData(user: ApiUser) {
+        println("🔄 ProfileActivity: Updating UI with user data")
+        println("   - Username: ${user.username}")
+        println("   - Full Name: ${user.fullName}")
+        println("   - Bio: ${user.bio}")
+        println("   - Profile Image: ${user.profileImageUrl}")
+        
         try {
             findViewById<TextView>(R.id.tv_username)?.text = user.username
+            println("✅ Username set to: ${user.username}")
 
             // Set circular profile picture
             setProfilePicture(user)
 
             val bioTextView = findViewById<TextView>(R.id.tv_bio)
 
-            // Don't show location if it's empty - for user privacy
-            val location = if (user.location.isNotEmpty()) user.location else ""
-            val bio = if (user.bio.isNotEmpty()) user.bio else "Pet lover and rescuer 🐶❤️"
+            // Use REAL bio from MongoDB - NO hardcoded fallback
+            val location = if (!user.location.isNullOrEmpty()) user.location else ""
+            val bio = if (!user.bio.isNullOrEmpty()) user.bio else ""
 
-            // Build bio without location if it's empty
-            val newBio = if (location.isNotEmpty()) {
+            // Build bio
+            val newBio = if (location.isNotEmpty() && bio.isNotEmpty()) {
                 """
                 ${user.fullName}
                 $location
                 $bio
             """.trimIndent()
-            } else {
+            } else if (bio.isNotEmpty()) {
+                bio
+            } else if (location.isNotEmpty()) {
                 """
                 ${user.fullName}
-                $bio
+                $location
             """.trimIndent()
+            } else {
+                user.fullName
             }
 
             bioTextView?.text = newBio
+            println("✅ Bio set to: $newBio")
 
-            val userPosts = UserDatabase.getAllPosts(this).filter { it.userId == user.uid }
-
-            findViewById<TextView>(R.id.tv_post_count)?.text = userPosts.size.toString()
-            findViewById<TextView>(R.id.tv_follower_count)?.text = "156"
-            findViewById<TextView>(R.id.tv_following_count)?.text = "132"
+            // Post count will be updated when data loads from ViewModel
+            findViewById<TextView>(R.id.tv_post_count)?.text = "0"
+            findViewById<TextView>(R.id.tv_follower_count)?.text = "0"
+            findViewById<TextView>(R.id.tv_following_count)?.text = "0"
 
             // Handle posts grid based on current tab
             if (currentTab == "posts") {
@@ -95,37 +148,60 @@ class ProfileActivity : BaseNavigationActivity() {
         }
     }
 
-    private fun setProfilePicture(user: AppUser) {
+    private fun setProfilePicture(user: ApiUser) {
         try {
             val profileInitial = findViewById<TextView>(R.id.profile_initial)
+            val profileImage = findViewById<ImageView>(R.id.profile_image)
             val profileBackground = findViewById<View>(R.id.profile_circle_background)
 
-            // Use ColorFilter to change the color while preserving the shape
-            val color = generateColorFromUsername(user.username)
-            val backgroundDrawable = ContextCompat.getDrawable(this, R.drawable.circle_solid_profile)
-            backgroundDrawable?.setColorFilter(color, PorterDuff.Mode.SRC_ATOP)
-            profileBackground.background = backgroundDrawable
-
-            // Get first letter of first name
-            val firstName = if (user.fullName.contains(",")) {
-                val parts = user.fullName.split(", ")
-                if (parts.size > 1) {
-                    parts[1].split(" ").firstOrNull() ?: ""
+            // Load profile image if available
+            if (!user.profileImageUrl.isNullOrEmpty()) {
+                val fullImageUrl = if (user.profileImageUrl.startsWith("http")) {
+                    user.profileImageUrl
                 } else {
-                    user.fullName
+                    "${com.example.pawsociety.api.ApiClient.FULL_BASE_URL}${user.profileImageUrl}"
                 }
+                
+                profileImage?.visibility = View.VISIBLE
+                profileInitial?.visibility = View.GONE
+                
+                Glide.with(this)
+                    .load(fullImageUrl)
+                    .circleCrop()
+                    .placeholder(android.R.drawable.ic_menu_gallery)
+                    .error(android.R.drawable.ic_menu_report_image)
+                    .into(profileImage)
             } else {
-                user.fullName.split(" ").firstOrNull() ?: ""
-            }
+                // Show initial letter as fallback
+                profileImage?.visibility = View.GONE
+                profileInitial?.visibility = View.VISIBLE
+                
+                val color = generateColorFromUsername(user.username)
+                val backgroundDrawable = ContextCompat.getDrawable(this, R.drawable.circle_solid_profile)
+                backgroundDrawable?.setColorFilter(color, PorterDuff.Mode.SRC_ATOP)
+                profileBackground.background = backgroundDrawable
 
-            val firstLetter = if (firstName.isNotEmpty()) {
-                firstName.first().toString().uppercase()
-            } else {
-                "?"
-            }
+                // Get first letter of first name
+                val firstName = if (user.fullName.contains(",")) {
+                    val parts = user.fullName.split(", ")
+                    if (parts.size > 1) {
+                        parts[1].split(" ").firstOrNull() ?: ""
+                    } else {
+                        user.fullName
+                    }
+                } else {
+                    user.fullName.split(" ").firstOrNull() ?: ""
+                }
 
-            profileInitial.text = firstLetter
-            profileInitial.textSize = 36f
+                val firstLetter = if (firstName.isNotEmpty()) {
+                    firstName.first().toString().uppercase()
+                } else {
+                    "?"
+                }
+
+                profileInitial.text = firstLetter
+                profileInitial.textSize = 36f
+            }
 
         } catch (e: Exception) {
             e.printStackTrace()
@@ -160,7 +236,7 @@ class ProfileActivity : BaseNavigationActivity() {
     private fun loadHighlights() {
         // Load highlights from database
         currentUser?.let { user ->
-            val savedHighlights = UserDatabase.getUserHighlights(this, user.uid)
+            val savedHighlights = UserDatabase.getUserHighlights(this, user.firebaseUid)
             highlights.clear()
             highlights.addAll(savedHighlights)
             updateHighlightsDisplay()
@@ -169,7 +245,7 @@ class ProfileActivity : BaseNavigationActivity() {
 
     private fun saveHighlights() {
         currentUser?.let { user ->
-            UserDatabase.saveUserHighlights(this, user.uid, highlights)
+            UserDatabase.saveUserHighlights(this, user.firebaseUid, highlights)
         }
     }
 
@@ -321,7 +397,20 @@ class ProfileActivity : BaseNavigationActivity() {
         }
     }
 
-    private fun createPostsGrid(container: LinearLayout, posts: List<Post>) {
+    private fun showProfilePhotoPicker() {
+        imagePickerLauncher.launch("image/*")
+    }
+    
+    private suspend fun uploadProfileImage(): String? {
+        val uri = selectedProfileImageUri ?: return null
+
+        val file = FileHelper.uriToFile(this, uri) ?: return null
+        val result = uploadRepository.uploadProfilePicture(file)
+
+        return result.getOrNull()
+    }
+
+    private fun createPostsGrid(container: LinearLayout, posts: List<ApiPost>) {
         try {
             val colors = listOf(
                 "#4CAF50", "#2196F3", "#FF9800",
@@ -370,9 +459,29 @@ class ProfileActivity : BaseNavigationActivity() {
                         val post = posts[postIndex]
                         val postView = layoutInflater.inflate(R.layout.item_profile_post, squareContainer, false)
                         val postContent = postView.findViewById<TextView>(R.id.post_content)
+                        val postImage = postView.findViewById<ImageView>(R.id.post_image)
 
-                        postContent.text = "${getPetEmoji(post.petType)}\n${post.petName}"
-                        postContent.setBackgroundColor(Color.parseColor(colors[postIndex % colors.size]))
+                        // Load image if available
+                        if (!post.imageUrls.isNullOrEmpty() && post.imageUrls.isNotEmpty()) {
+                            val imageUrl = post.imageUrls[0]
+                            val fullImageUrl = if (imageUrl.startsWith("http")) {
+                                imageUrl
+                            } else {
+                                "${com.example.pawsociety.api.ApiClient.FULL_BASE_URL}$imageUrl"
+                            }
+                            
+                            postImage?.visibility = View.VISIBLE
+                            Glide.with(this)
+                                .load(fullImageUrl)
+                                .centerCrop()
+                                .placeholder(android.R.drawable.ic_menu_gallery)
+                                .into(postImage)
+                        } else {
+                            // Show colored background with pet info
+                            postImage?.visibility = View.GONE
+                            postContent.text = "${getPetEmoji(post.petType)}\n${post.petName}"
+                            postContent.setBackgroundColor(Color.parseColor(colors[postIndex % colors.size]))
+                        }
 
                         postView.setOnClickListener {
                             showPostDetails(post)
@@ -410,24 +519,24 @@ class ProfileActivity : BaseNavigationActivity() {
         }
     }
 
-    private fun showPostDetails(post: Post) {
+    private fun showPostDetails(post: ApiPost) {
         val details = """
             🐾 ${post.petName}
             👤 Posted by: ${post.userName}
             📍 ${post.location}
             🔍 Status: ${post.status}
-            💰 ${if (post.reward.isNotEmpty()) "Reward: ${post.reward}" else "No reward"}
+            💰 ${if (!post.reward.isNullOrEmpty()) "Reward: ${post.reward}" else "No reward"}
             📞 ${post.contactInfo}
-            
+
             ${post.description}
-            
+
             🕒 ${post.createdAt}
         """.trimIndent()
 
         Toast.makeText(this, details, Toast.LENGTH_LONG).show()
     }
 
-    private fun setupClickListeners(user: AppUser) {
+    private fun setupClickListeners(user: ApiUser) {
         try {
             findViewById<TextView>(R.id.btn_settings)?.setOnClickListener {
                 it.animate().scaleX(0.9f).scaleY(0.9f).setDuration(100).withEndAction {
@@ -477,9 +586,9 @@ class ProfileActivity : BaseNavigationActivity() {
         }
     }
 
-    private fun loadPostsTab(user: AppUser) {
+    private fun loadPostsTab(user: ApiUser) {
         try {
-            // Show user's posts
+            // Show user's posts from ViewModel (API)
             val postsGrid = findViewById<LinearLayout>(R.id.posts_grid)
             val bigPlusButton = findViewById<View>(R.id.big_plus_button)
 
@@ -488,17 +597,22 @@ class ProfileActivity : BaseNavigationActivity() {
                 return
             }
 
-            val userPosts = UserDatabase.getAllPosts(this).filter { it.userId == user.uid }
+            // Observe user posts from ViewModel
+            viewModel.userPosts.observe(this) { userPosts ->
+                postsGrid.removeAllViews()
 
-            postsGrid.removeAllViews()
-
-            if (userPosts.isNotEmpty()) {
-                bigPlusButton?.visibility = View.GONE
-                postsGrid.visibility = View.VISIBLE
-                createPostsGrid(postsGrid, userPosts)
-            } else {
-                bigPlusButton?.visibility = View.VISIBLE
-                postsGrid.visibility = View.GONE
+                if (userPosts.isNotEmpty()) {
+                    bigPlusButton?.visibility = View.GONE
+                    postsGrid.visibility = View.VISIBLE
+                    createPostsGrid(postsGrid, userPosts)
+                    
+                    // Update post count
+                    findViewById<TextView>(R.id.tv_post_count)?.text = userPosts.size.toString()
+                } else {
+                    bigPlusButton?.visibility = View.VISIBLE
+                    postsGrid.visibility = View.GONE
+                    findViewById<TextView>(R.id.tv_post_count)?.text = "0"
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -506,9 +620,9 @@ class ProfileActivity : BaseNavigationActivity() {
         }
     }
 
-    private fun loadFavoritesTab(user: AppUser) {
+    private fun loadFavoritesTab(user: ApiUser) {
         try {
-            // Get user's favorite posts
+            // Get user's favorite posts from ViewModel (API)
             val postsGrid = findViewById<LinearLayout>(R.id.posts_grid)
             val bigPlusButton = findViewById<View>(R.id.big_plus_button)
 
@@ -523,34 +637,33 @@ class ProfileActivity : BaseNavigationActivity() {
             bigPlusButton?.visibility = View.GONE
             postsGrid.visibility = View.VISIBLE
 
-            // Get favorite posts
-            val favoritePosts = UserDatabase.getFavoritePosts(this, user.uid)
-
-            if (favoritePosts.isNotEmpty()) {
-                // Show favorite posts in grid
-                createPostsGrid(postsGrid, favoritePosts)
-            } else {
-                // Show empty state
-                val emptyView = TextView(this)
-                emptyView.layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                emptyView.gravity = android.view.Gravity.CENTER
-                emptyView.text = "No favorites yet\nSave posts you like from the home feed!"
-                emptyView.setTextColor(Color.parseColor("#999999"))
-                emptyView.textSize = 16f
-                emptyView.setPadding(0, 100, 0, 100)
-                postsGrid.addView(emptyView)
+            // Observe favorite posts from ViewModel
+            viewModel.favoritePosts.observe(this) { favoritePosts ->
+                if (favoritePosts.isNotEmpty()) {
+                    // Show favorite posts in grid
+                    createPostsGrid(postsGrid, favoritePosts)
+                } else {
+                    // Show empty state
+                    val emptyView = TextView(this)
+                    emptyView.layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    emptyView.gravity = android.view.Gravity.CENTER
+                    emptyView.text = "No favorites yet\nSave posts you like from the home feed!"
+                    emptyView.setTextColor(Color.parseColor("#999999"))
+                    emptyView.textSize = 16f
+                    emptyView.setPadding(0, 100, 0, 100)
+                    postsGrid.addView(emptyView)
+                }
             }
-
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "Error loading favorites: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun showEditProfileDialog(user: AppUser) {
+    private fun showEditProfileDialog(user: ApiUser) {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_edit_profile, null)
 
         val etLastName = dialogView.findViewById<EditText>(R.id.et_last_name)
@@ -558,6 +671,8 @@ class ProfileActivity : BaseNavigationActivity() {
         val etMiddleInitial = dialogView.findViewById<EditText>(R.id.et_middle_initial)
         val etUsername = dialogView.findViewById<EditText>(R.id.et_username)
         val etBio = dialogView.findViewById<EditText>(R.id.et_bio)
+        val profileImage = dialogView.findViewById<ImageView>(R.id.edit_profile_image)
+        val btnChangePhoto = dialogView.findViewById<TextView>(R.id.btn_change_photo)
 
         val (lastName, firstName, middleInitial) = parseFullName(user.fullName)
         etLastName.setText(lastName)
@@ -565,6 +680,25 @@ class ProfileActivity : BaseNavigationActivity() {
         etMiddleInitial.setText(middleInitial)
         etUsername.setText(user.username)
         etBio.setText(user.bio)
+        
+        // Load current profile image
+        if (!user.profileImageUrl.isNullOrEmpty()) {
+            val fullImageUrl = if (user.profileImageUrl.startsWith("http")) {
+                user.profileImageUrl
+            } else {
+                "${com.example.pawsociety.api.ApiClient.FULL_BASE_URL}${user.profileImageUrl}"
+            }
+            Glide.with(this)
+                .load(fullImageUrl)
+                .circleCrop()
+                .placeholder(android.R.drawable.ic_menu_gallery)
+                .into(profileImage)
+        }
+        
+        // Change photo button
+        btnChangePhoto.setOnClickListener {
+            showProfilePhotoPicker()
+        }
 
         setupValidation(etLastName, etFirstName, etUsername)
 
@@ -577,39 +711,53 @@ class ProfileActivity : BaseNavigationActivity() {
         dialog.setOnShowListener {
             val button = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
             button.setOnClickListener {
-                if (validateFields(etLastName, etFirstName, etUsername)) {
-                    val newLastName = etLastName.text.toString().trim()
-                    val newFirstName = etFirstName.text.toString().trim()
-                    val newMiddleInitial = etMiddleInitial.text.toString().trim()
+                lifecycleScope.launch {
+                    if (validateFields(etLastName, etFirstName, etUsername)) {
+                        val newLastName = etLastName.text.toString().trim()
+                        val newFirstName = etFirstName.text.toString().trim()
+                        val newMiddleInitial = etMiddleInitial.text.toString().trim()
 
-                    val newFullName = if (newMiddleInitial.isNotEmpty()) {
-                        "$newLastName, $newFirstName $newMiddleInitial."
-                    } else {
-                        "$newLastName, $newFirstName"
-                    }
+                        val newFullName = if (newMiddleInitial.isNotEmpty()) {
+                            "$newLastName, $newFirstName $newMiddleInitial."
+                        } else {
+                            "$newLastName, $newFirstName"
+                        }
 
-                    val newUsername = etUsername.text.toString().trim()
-                    val newBio = etBio.text.toString().trim()
+                        val newUsername = etUsername.text.toString().trim()
+                        val newBio = etBio.text.toString().trim()
 
-                    if (newUsername != user.username) {
-                        if (UserDatabase.isUsernameTaken(this, newUsername, user.uid)) {
-                            Toast.makeText(this, "Username already taken", Toast.LENGTH_SHORT).show()
-                            return@setOnClickListener
+                        if (newUsername != user.username) {
+                            if (UserDatabase.isUsernameTaken(this@ProfileActivity, newUsername, user.firebaseUid)) {
+                                Toast.makeText(this@ProfileActivity, "Username already taken", Toast.LENGTH_SHORT).show()
+                                return@launch
+                            }
+                        }
+
+                        // Upload profile image if selected
+                        var profileImageUrl = user.profileImageUrl
+                        if (selectedProfileImageUri != null) {
+                            val uploadedUrl = uploadProfileImage()
+                            if (uploadedUrl != null) {
+                                profileImageUrl = uploadedUrl
+                            }
+                        }
+
+                        // Update profile using ViewModel (API)
+                        viewModel.updateProfile(
+                            fullName = newFullName,
+                            username = newUsername,
+                            bio = newBio,
+                            profileImageUrl = profileImageUrl
+                        )
+
+                        Toast.makeText(this@ProfileActivity, "Profile updated!", Toast.LENGTH_SHORT).show()
+                        dialog.dismiss()
+                        
+                        // Force refresh UI after dialog closes
+                        viewModel.user.value?.let { user ->
+                            updateProfileWithUserData(user)
                         }
                     }
-
-                    val updatedUser = user.copy(
-                        fullName = newFullName,
-                        username = newUsername,
-                        bio = newBio
-                    )
-
-                    UserDatabase.updateUser(this, updatedUser)
-                    currentUser = updatedUser
-                    updateProfileWithUserData(updatedUser)
-
-                    Toast.makeText(this, "Profile updated!", Toast.LENGTH_SHORT).show()
-                    dialog.dismiss()
                 }
             }
         }
@@ -692,7 +840,7 @@ class ProfileActivity : BaseNavigationActivity() {
 
     override fun onResume() {
         super.onResume()
-        val currentUser = UserDatabase.getCurrentUser(this)
+        val currentUser = sessionManager.getCurrentUser()
         currentUser?.let {
             this.currentUser = it
             updateProfileWithUserData(it)

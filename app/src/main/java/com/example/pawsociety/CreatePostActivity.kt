@@ -13,6 +13,12 @@ import android.view.inputmethod.EditorInfo
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.example.pawsociety.data.repository.PostRepository
+import com.example.pawsociety.data.repository.UploadRepository
+import com.example.pawsociety.util.FileHelper
+import com.example.pawsociety.util.SessionManager
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -46,13 +52,24 @@ class CreatePostActivity : AppCompatActivity() {
 
     // Adapter for breed suggestions
     private lateinit var breedAdapter: SuggestionsAdapter
+    
+    // Image upload
+    private val uploadRepository = UploadRepository()
+    private val selectedImages = mutableListOf<android.net.Uri>()
+    private lateinit var btnAddPhoto: TextView
+    private lateinit var photoCountBadge: TextView
+    
+    private lateinit var sessionManager: SessionManager
+    private val postRepository = PostRepository()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_create_post)
+        
+        sessionManager = SessionManager(this)
 
         // Check if user is logged in
-        val currentUser = UserDatabase.getCurrentUser(this)
+        val currentUser = sessionManager.getCurrentUser()
         if (currentUser == null) {
             Toast.makeText(this, "Please login to create posts", Toast.LENGTH_SHORT).show()
             finish()
@@ -311,15 +328,19 @@ class CreatePostActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupClickListeners(currentUser: AppUser) {
+    private fun setupClickListeners(currentUser: com.example.pawsociety.api.ApiUser) {
         // Cancel button
         btnCancel.setOnClickListener {
             finish()
         }
 
         // Add photo button
-        findViewById<TextView>(R.id.btn_add_photo).setOnClickListener {
-            Toast.makeText(this, "Open camera or gallery", Toast.LENGTH_SHORT).show()
+        btnAddPhoto = findViewById(R.id.btn_add_photo)
+        photoCountBadge = findViewById(R.id.tv_photo_count)
+        updatePhotoCountBadge()
+        
+        btnAddPhoto.setOnClickListener {
+            showImagePicker()
         }
 
         // Location selector button
@@ -521,7 +542,7 @@ class CreatePostActivity : AppCompatActivity() {
                 isLocationValid && isContactValid && isDescriptionValid
     }
 
-    private fun createNewPost(currentUser: AppUser) {
+    private fun createNewPost(currentUser: com.example.pawsociety.api.ApiUser) {
         val petName = etPetName.text.toString().trim()
         val petType = actPetType.text.toString().trim()
 
@@ -533,40 +554,50 @@ class CreatePostActivity : AppCompatActivity() {
         val contact = etContact.text.toString().trim()
         val description = etDescription.text.toString().trim()
 
-        val postId = "post_${System.currentTimeMillis()}_${UUID.randomUUID().toString().substring(0, 8)}"
-
-        val post = Post(
-            postId = postId,
-            userId = currentUser.uid,
-            userName = currentUser.username,
-            userImageUrl = currentUser.profileImageUrl,
-            petName = petName,
-            petType = petType,
-            status = selectedStatus,
-            description = description,
-            location = location,
-            reward = reward,
-            contactInfo = contact,
-            createdAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-        )
-
         // Show loading state
         btnPost.text = "Posting..."
         btnPost.isEnabled = false
 
-        val success = UserDatabase.savePost(this, post)
+        lifecycleScope.launch {
+            try {
+                // Step 1: Upload images if any
+                val imageUrls = if (selectedImages.isNotEmpty()) {
+                    Toast.makeText(this@CreatePostActivity, "Uploading images...", Toast.LENGTH_SHORT).show()
+                    uploadImages()
+                } else {
+                    emptyList()
+                }
 
-        if (success) {
-            Toast.makeText(this, "✅ Post created successfully!", Toast.LENGTH_SHORT).show()
-            clearForm()
-            val intent = Intent(this, HomeActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            startActivity(intent)
-            finish()
-        } else {
-            Toast.makeText(this, "❌ Failed to create post", Toast.LENGTH_SHORT).show()
-            btnPost.text = "Post"
-            btnPost.isEnabled = true
+                // Step 2: Create post with image URLs
+                val result = postRepository.createPost(
+                    firebaseUid = currentUser.firebaseUid,
+                    petName = petName,
+                    petType = petType,
+                    status = selectedStatus,
+                    description = description,
+                    contactInfo = contact,
+                    location = if (location.isNotEmpty()) location else null,
+                    reward = if (reward.isNotEmpty()) reward else null,
+                    imageUrls = if (imageUrls.isNotEmpty()) imageUrls else null
+                )
+
+                if (result.isSuccess) {
+                    Toast.makeText(this@CreatePostActivity, "✅ Post created successfully!", Toast.LENGTH_SHORT).show()
+                    clearForm()
+                    val intent = Intent(this@CreatePostActivity, HomeActivity::class.java)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    startActivity(intent)
+                    finish()
+                } else {
+                    Toast.makeText(this@CreatePostActivity, "❌ Failed to create post: ${result.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                    btnPost.text = "Post"
+                    btnPost.isEnabled = true
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@CreatePostActivity, "❌ Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                btnPost.text = "Post"
+                btnPost.isEnabled = true
+            }
         }
     }
 
@@ -599,5 +630,106 @@ class CreatePostActivity : AppCompatActivity() {
         errorDescription.visibility = View.GONE
 
         updateCharCounter()
+    }
+    
+    // ==================== IMAGE UPLOAD FUNCTIONS ====================
+    
+    private fun showImagePicker() {
+        if (selectedImages.size >= 5) {
+            Toast.makeText(this, "Maximum 5 images allowed", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        val options = arrayOf("Camera", "Gallery")
+        AlertDialog.Builder(this)
+            .setTitle("Add Photo")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> openCamera()
+                    1 -> openGallery()
+                }
+            }
+            .show()
+    }
+    
+    private fun openCamera() {
+        // For simplicity, using gallery intent for camera
+        // In production, implement proper camera intent with FileProvider
+        openGallery()
+    }
+    
+    private fun openGallery() {
+        val intent = Intent(Intent.ACTION_PICK).apply {
+            type = "image/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        }
+        startActivityForResult(intent, REQUEST_PICK_IMAGE)
+    }
+    
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        
+        if (requestCode == REQUEST_PICK_IMAGE && resultCode == RESULT_OK) {
+            data?.let {
+                // Handle multiple images
+                val clipData = it.clipData
+                if (clipData != null) {
+                    for (i in 0 until clipData.itemCount) {
+                        if (selectedImages.size < 5) {
+                            selectedImages.add(clipData.getItemAt(i).uri)
+                        }
+                    }
+                } else {
+                    // Single image
+                    it.data?.let { uri ->
+                        selectedImages.add(uri)
+                    }
+                }
+                updatePhotoCountBadge()
+                Toast.makeText(this, "${selectedImages.size} image(s) selected", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    private fun updatePhotoCountBadge() {
+        if (selectedImages.isNotEmpty()) {
+            photoCountBadge.text = "${selectedImages.size}/5"
+            photoCountBadge.visibility = View.VISIBLE
+            btnAddPhoto.text = "Change Photos"
+        } else {
+            photoCountBadge.visibility = View.GONE
+            btnAddPhoto.text = "Add Photos (Optional)"
+        }
+    }
+    
+    private suspend fun uploadImages(): List<String> {
+        if (selectedImages.isEmpty()) {
+            return emptyList()
+        }
+        
+        val imageFiles = selectedImages.mapNotNull { uri ->
+            FileHelper.uriToFile(this, uri)?.let { file ->
+                FileHelper.compressImage(file)
+            }
+        }
+        
+        if (imageFiles.isEmpty()) {
+            throw Exception("Failed to process selected images")
+        }
+        
+        val result = uploadRepository.uploadPostImages(imageFiles)
+        
+        // Clean up temp files
+        imageFiles.forEach { file ->
+            if (file.name.startsWith("compressed_") || file.name.startsWith("upload_")) {
+                FileHelper.deleteFile(file)
+            }
+        }
+        
+        return result.getOrNull() ?: emptyList()
+    }
+    
+    companion object {
+        private const val REQUEST_PICK_IMAGE = 1001
     }
 }

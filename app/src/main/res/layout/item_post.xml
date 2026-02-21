@@ -74,12 +74,14 @@
                 android:textSize="24sp" />
         </LinearLayout>
 
-        <!-- Post Image - TALLER FOR WIDER LOOK -->
-        <View
+        <!-- Post Image -->
+        <ImageView
             android:id="@+id/post_image"
             android:layout_width="match_parent"
             android:layout_height="200dp"
-            android:background="#E0E0E0" />
+            android:scaleType="centerCrop"
+            android:contentDescription="Post image"
+            android:visibility="gone" />
 
         <!-- Post Actions -->
         <LinearLayout
@@ -101,10 +103,20 @@
                 android:background="?android:attr/selectableItemBackgroundBorderless" />
 
             <TextView
+                android:id="@+id/tv_like_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:textColor="#FF6B35"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginStart="4dp" />
+
+            <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Like"
-                android:textColor="#FF6B35"
+                android:textColor="#666666"
                 android:textSize="12sp"
                 android:layout_marginStart="4dp" />
 

@@ -2,8 +2,10 @@ package com.example.pawsociety
 
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.PorterDuff
 import android.os.Bundle
 import android.view.View
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -22,24 +24,24 @@ abstract class BaseNavigationActivity : AppCompatActivity() {
             val bottomNav = findViewById<LinearLayout>(R.id.bottom_navigation)
             bottomNav?.setBackgroundColor(Color.WHITE)
 
-            val navHomeIcon = findViewById<TextView>(R.id.nav_home_icon)
+            val navHomeIcon = findViewById<ImageView>(R.id.nav_home_icon)
             val navHomeText = findViewById<TextView>(R.id.nav_home_text)
-            val navInboxIcon = findViewById<TextView>(R.id.nav_inbox_icon)
+            val navInboxIcon = findViewById<ImageView>(R.id.nav_inbox_icon)
             val navInboxText = findViewById<TextView>(R.id.nav_inbox_text)
-            val navFindIcon = findViewById<TextView>(R.id.nav_find_icon)
+            val navFindIcon = findViewById<ImageView>(R.id.nav_find_icon)
             val navFindText = findViewById<TextView>(R.id.nav_find_text)
-            val navProfileIcon = findViewById<TextView>(R.id.nav_profile_icon)
+            val navProfileIcon = findViewById<ImageView>(R.id.nav_profile_icon)
             val navProfileText = findViewById<TextView>(R.id.nav_profile_text)
 
             // Set all to gray
             val grayColor = "#666666"
-            navHomeIcon?.setTextColor(Color.parseColor(grayColor))
+            navHomeIcon?.setColorFilter(Color.parseColor(grayColor))
             navHomeText?.setTextColor(Color.parseColor(grayColor))
-            navInboxIcon?.setTextColor(Color.parseColor(grayColor))
+            navInboxIcon?.setColorFilter(Color.parseColor(grayColor))
             navInboxText?.setTextColor(Color.parseColor(grayColor))
-            navFindIcon?.setTextColor(Color.parseColor(grayColor))
+            navFindIcon?.setColorFilter(Color.parseColor(grayColor))
             navFindText?.setTextColor(Color.parseColor(grayColor))
-            navProfileIcon?.setTextColor(Color.parseColor(grayColor))
+            navProfileIcon?.setColorFilter(Color.parseColor(grayColor))
             navProfileText?.setTextColor(Color.parseColor(grayColor))
 
         } catch (e: Exception) {
@@ -103,19 +105,19 @@ abstract class BaseNavigationActivity : AppCompatActivity() {
 
         when (this) {
             is HomeActivity -> {
-                findViewById<TextView>(R.id.nav_home_icon)?.setTextColor(Color.parseColor(highlightColor))
+                findViewById<ImageView>(R.id.nav_home_icon)?.setColorFilter(Color.parseColor(highlightColor))
                 findViewById<TextView>(R.id.nav_home_text)?.setTextColor(Color.parseColor(highlightColor))
             }
             is InboxActivity -> {
-                findViewById<TextView>(R.id.nav_inbox_icon)?.setTextColor(Color.parseColor(highlightColor))
+                findViewById<ImageView>(R.id.nav_inbox_icon)?.setColorFilter(Color.parseColor(highlightColor))
                 findViewById<TextView>(R.id.nav_inbox_text)?.setTextColor(Color.parseColor(highlightColor))
             }
             is FindActivity -> {
-                findViewById<TextView>(R.id.nav_find_icon)?.setTextColor(Color.parseColor(highlightColor))
+                findViewById<ImageView>(R.id.nav_find_icon)?.setColorFilter(Color.parseColor(highlightColor))
                 findViewById<TextView>(R.id.nav_find_text)?.setTextColor(Color.parseColor(highlightColor))
             }
             is ProfileActivity -> {
-                findViewById<TextView>(R.id.nav_profile_icon)?.setTextColor(Color.parseColor(highlightColor))
+                findViewById<ImageView>(R.id.nav_profile_icon)?.setColorFilter(Color.parseColor(highlightColor))
                 findViewById<TextView>(R.id.nav_profile_text)?.setTextColor(Color.parseColor(highlightColor))
             }
         }
@@ -124,13 +126,13 @@ abstract class BaseNavigationActivity : AppCompatActivity() {
     private fun resetAllTabs() {
         val defaultColor = "#666666"  // Gray
 
-        findViewById<TextView>(R.id.nav_home_icon)?.setTextColor(Color.parseColor(defaultColor))
+        findViewById<ImageView>(R.id.nav_home_icon)?.setColorFilter(Color.parseColor(defaultColor))
         findViewById<TextView>(R.id.nav_home_text)?.setTextColor(Color.parseColor(defaultColor))
-        findViewById<TextView>(R.id.nav_inbox_icon)?.setTextColor(Color.parseColor(defaultColor))
+        findViewById<ImageView>(R.id.nav_inbox_icon)?.setColorFilter(Color.parseColor(defaultColor))
         findViewById<TextView>(R.id.nav_inbox_text)?.setTextColor(Color.parseColor(defaultColor))
-        findViewById<TextView>(R.id.nav_find_icon)?.setTextColor(Color.parseColor(defaultColor))
+        findViewById<ImageView>(R.id.nav_find_icon)?.setColorFilter(Color.parseColor(defaultColor))
         findViewById<TextView>(R.id.nav_find_text)?.setTextColor(Color.parseColor(defaultColor))
-        findViewById<TextView>(R.id.nav_profile_icon)?.setTextColor(Color.parseColor(defaultColor))
+        findViewById<ImageView>(R.id.nav_profile_icon)?.setColorFilter(Color.parseColor(defaultColor))
         findViewById<TextView>(R.id.nav_profile_text)?.setTextColor(Color.parseColor(defaultColor))
     }
 }
