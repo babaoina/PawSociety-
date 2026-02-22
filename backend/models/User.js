@@ -43,6 +43,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  role: {
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user'
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -52,8 +57,8 @@ const userSchema = new mongoose.Schema({
 });
 
 // Indexes for faster queries
-userSchema.index({ firebaseUid: 1 });
-userSchema.index({ username: 1 });
-userSchema.index({ email: 1 });
+// userSchema.index({ firebaseUid: 1 }); // Removed: duplicate of unique: true
+// userSchema.index({ username: 1 }); // Removed: duplicate of unique: true
+// userSchema.index({ email: 1 }); // Removed: duplicate of unique: true
 
 module.exports = mongoose.model('User', userSchema);

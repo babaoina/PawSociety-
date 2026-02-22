@@ -48,7 +48,7 @@ const petSchema = new mongoose.Schema({
 });
 
 // Indexes
-petSchema.index({ petId: 1 });
+// petSchema.index({ petId: 1 }); // Removed: duplicate of unique: true
 petSchema.index({ ownerUid: 1 });
 petSchema.index({ type: 1 });
 

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Diagnostic</title>
+    <style>
+        body { padding: 20px; font-family: Arial; }
+        .section { margin: 20px 0; }
+        .result { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>Admin Dashboard Diagnostic</h1>
+    
+    <div class="section">
+        <h3>1. Check Admin Token</h3>
+        <div id="token-check"></div>
+    </div>
+
+    <div class="section">
+        <h3>2. Test API Connection</h3>
+        <button onclick="testApi()">Test API</button>
+        <div id="api-test"></div>
+    </div>
+
+    <div class="section">
+        <h3>3. Direct MongoDB Data</h3>
+        <div id="mongo-data"></div>
+    </div>
+
+    <script>
+        async function testApi() {
+            const token = localStorage.getItem('adminToken');
+            document.getElementById('token-check').innerHTML = 
+                token ? `<span class="success">✅ Token found: ${token.substring(0,20)}...</span>` : 
+                `<span class="error">❌ No token found - please log in first</span>`;
+
+            if (!token) return;
+
+            try {
+                const response = await fetch('/api/admin/reports', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                document.getElementById('api-test').innerHTML = 
+                    `<div>Response status: ${response.status} ${response.statusText}</div>`;
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('api-test').innerHTML += 
+                        `<div class="success">✅ API Response: ${JSON.stringify(data)}</div>`;
+                    
+                    // Show actual data
+                    const reports = data.reports || {};
+                    document.getElementById('mongo-data').innerHTML = `
+                        <div><strong>Total Users:</strong> ${reports.totalUsers || 0}</div>
+                        <div><strong>Total Posts:</strong> ${reports.totalPosts || 0}</div>
+                        <div><strong>Active Posts:</strong> ${reports.activePosts || 0}</div>
+                    `;
+                } else {
+                    document.getElementById('api-test').innerHTML += 
+                        `<div class="error">❌ API Error: ${await response.text()}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('api-test').innerHTML = 
+                    `<div class="error">❌ Network Error: ${error.message}</div>`;
+            }
+        }
+
+        // Auto-test on load
+        window.onload = function() {
+            setTimeout(testApi, 1000);
+        };
+    </script>
+</body>
+</html>

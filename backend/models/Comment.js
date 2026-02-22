@@ -46,6 +46,6 @@ const commentSchema = new mongoose.Schema({
 
 // Indexes
 commentSchema.index({ postId: 1, createdAt: -1 });
-commentSchema.index({ firebaseUid: 1 });
+// commentSchema.index({ firebaseUid: 1 }); // Removed duplicate
 
 module.exports = mongoose.model('Comment', commentSchema);

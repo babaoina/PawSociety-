@@ -4,6 +4,7 @@ const Post = require('../models/Post');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { v4: uuidv4 } = require('uuid');
+const { verifyFirebaseToken } = require('./auth');
 
 /**
  * GET /api/posts
@@ -69,20 +70,28 @@ router.get('/:postId', async (req, res) => {
 /**
  * POST /api/posts
  * Create a new post
- * Body: { firebaseUid, petName, petType, status, description, location, reward, contactInfo, imageUrls }
+ * User-only endpoint
  */
-router.post('/', async (req, res) => {
+router.post('/', verifyFirebaseToken, async (req, res) => {
   try {
-    const { 
-      firebaseUid, 
-      petName, 
-      petType, 
-      status, 
-      description, 
-      location, 
-      reward, 
-      contactInfo, 
-      imageUrls 
+    // Check if user is a regular user
+    if (!req.user || req.user.role !== 'user') {
+      return res.status(403).json({
+        success: false,
+        message: 'User access only'
+      });
+    }
+
+    const {
+      firebaseUid,
+      petName,
+      petType,
+      status,
+      description,
+      location,
+      reward,
+      contactInfo,
+      imageUrls
     } = req.body;
 
     // Validate required fields
@@ -90,6 +99,14 @@ router.post('/', async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Missing required fields'
+      });
+    }
+
+    // Ensure the firebaseUid matches the authenticated user
+    if (firebaseUid !== req.user.firebaseUid) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only create posts for your own account'
       });
     }
 
@@ -102,7 +119,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Create post
+    // Create post with moderationStatus set to 'pending' for new posts (admin review)
     const post = new Post({
       postId: `post_${Date.now()}_${uuidv4().substring(0, 8)}`,
       firebaseUid,
@@ -115,14 +132,15 @@ router.post('/', async (req, res) => {
       location: location || '',
       reward: reward || '',
       contactInfo,
-      imageUrls: imageUrls || []
+      imageUrls: imageUrls || [],
+      moderationStatus: 'pending' // New posts require admin approval
     });
 
     await post.save();
 
     res.status(201).json({
       success: true,
-      message: 'Post created',
+      message: 'Post created (pending moderation)',
       data: post
     });
   } catch (error) {
@@ -137,20 +155,47 @@ router.post('/', async (req, res) => {
 /**
  * PUT /api/posts/:postId
  * Update a post
+ * Allows self-editing and admin editing
  */
-router.put('/:postId', async (req, res) => {
+router.put('/:postId', verifyFirebaseToken, async (req, res) => {
   try {
+    // Check if user has permission to edit this post
+    const post = await Post.findOne({ postId: req.params.postId });
+    
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: 'Post not found'
+      });
+    }
+
+    if (!req.user || 
+        (req.user.firebaseUid !== post.firebaseUid && req.user.role !== 'admin')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only edit your own posts or you must be an admin.'
+      });
+    }
+
     const { firebaseUid } = req.body;
     const updateData = { ...req.body };
     delete updateData.firebaseUid; // Don't allow changing owner
 
-    const post = await Post.findOneAndUpdate(
-      { postId: req.params.postId, firebaseUid },
+    // If admin is updating, allow changing moderation status
+    if (req.user.role === 'admin' && updateData.moderationStatus) {
+      // Admin can change moderation status
+    } else if (updateData.moderationStatus && updateData.moderationStatus !== post.moderationStatus) {
+      // Regular user cannot change moderation status
+      delete updateData.moderationStatus;
+    }
+
+    const updatedPost = await Post.findOneAndUpdate(
+      { postId: req.params.postId },
       updateData,
       { new: true, runValidators: true }
     );
 
-    if (!post) {
+    if (!updatedPost) {
       return res.status(404).json({
         success: false,
         message: 'Post not found or unauthorized'
@@ -160,7 +205,7 @@ router.put('/:postId', async (req, res) => {
     res.json({
       success: true,
       message: 'Post updated',
-      post
+      post: updatedPost
     });
   } catch (error) {
     console.error('Update post error:', error);
@@ -174,17 +219,31 @@ router.put('/:postId', async (req, res) => {
 /**
  * DELETE /api/posts/:postId
  * Delete a post
+ * Allows self-deletion and admin deletion
  */
-router.delete('/:postId', async (req, res) => {
+router.delete('/:postId', verifyFirebaseToken, async (req, res) => {
   try {
-    const { firebaseUid } = req.body;
-
-    const post = await Post.findOneAndDelete({ 
-      postId: req.params.postId,
-      firebaseUid 
-    });
-
+    // Check if user has permission to delete this post
+    const post = await Post.findOne({ postId: req.params.postId });
+    
     if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: 'Post not found'
+      });
+    }
+
+    if (!req.user || 
+        (req.user.firebaseUid !== post.firebaseUid && req.user.role !== 'admin')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only delete your own posts or you must be an admin.'
+      });
+    }
+
+    const deletedPost = await Post.findOneAndDelete({ postId: req.params.postId });
+
+    if (!deletedPost) {
       return res.status(404).json({
         success: false,
         message: 'Post not found or unauthorized'
@@ -311,6 +370,62 @@ router.get('/:postId/is-liked', async (req, res) => {
     });
   } catch (error) {
     console.error('Check like status error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/posts/:postId/moderate
+ * Moderate a post (admin-only)
+ * Body: { status: 'active' | 'pending' | 'rejected' | 'removed', notes?: string }
+ */
+router.post('/:postId/moderate', verifyFirebaseToken, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access only'
+      });
+    }
+
+    const { status, notes } = req.body;
+    const postId = req.params.postId;
+
+    if (!status || !['active', 'pending', 'rejected', 'removed'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid moderation status. Must be one of: active, pending, rejected, removed'
+      });
+    }
+
+    const post = await Post.findOneAndUpdate(
+      { postId },
+      {
+        moderationStatus: status,
+        moderatedBy: req.user.firebaseUid,
+        moderationNotes: notes || ''
+      },
+      { new: true }
+    );
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: 'Post not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Post ${status}`,
+      post
+    });
+  } catch (error) {
+    console.error('Moderate post error:', error);
     res.status(500).json({
       success: false,
       message: error.message

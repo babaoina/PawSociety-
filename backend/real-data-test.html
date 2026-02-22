@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real Data Test</title>
+</head>
+<body>
+    <h1>Real Data Test - Should show real numbers</h1>
+    
+    <div>Total Users: <span id="users">0</span></div>
+    <div>Total Posts: <span id="posts">0</span></div>
+    
+    <script>
+        async function loadData() {
+            try {
+                const response = await fetch('http://localhost:5001/api/diagnostic');
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('users').textContent = data.data.totalUsers;
+                    document.getElementById('posts').textContent = data.data.totalPosts;
+                    document.body.style.backgroundColor = '#e8f5e8';
+                } else {
+                    document.body.style.backgroundColor = '#ffebee';
+                    alert('Error: ' + data.message);
+                }
+            } catch (error) {
+                document.body.style.backgroundColor = '#ffebee';
+                alert('Network error: ' + error.message);
+            }
+        }
+
+        loadData();
+    </script>
+</body>
+</html>

@@ -67,6 +67,19 @@ const postSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  moderationStatus: {
+    type: String,
+    enum: ['active', 'pending', 'rejected', 'removed'],
+    default: 'active'
+  },
+  moderatedBy: {
+    type: String,
+    default: ''
+  },
+  moderationNotes: {
+    type: String,
+    default: ''
+  },
   createdAt: {
     type: Date,
     default: Date.now

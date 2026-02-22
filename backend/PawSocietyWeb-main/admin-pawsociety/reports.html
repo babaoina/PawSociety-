@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PawSociety - Reports & Analytics</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="css/reports.css">
+</head>
+
+<body>
+    <div class="header">
+        <div class="logo">
+            <h1>PawSociety <span>Admin</span></h1>
+        </div>
+        <div class="admin-profile" id="adminProfile">
+            <div class="admin-name">
+                <div class="name" id="adminName">Admin User</div>
+                <div class="role" id="adminRole">Super Admin</div>
+            </div>
+            <div class="avatar" id="avatarBtn">A</div>
+
+            <!-- Dropdown Menu - ONLY LOGOUT -->
+            <div class="dropdown-menu" id="dropdownMenu">
+                <div class="dropdown-item logout" onclick="logout()">
+                    <span class="dropdown-icon">🚪</span>
+                    <span>Logout</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <!-- REARRANGED MENU: Dashboard → Posts → Users → Reports → Settings -->
+            <div class="menu-item" onclick="window.location.href='dashboard.html'">
+                <span class="menu-icon">📊</span>
+                <span>Dashboard</span>
+            </div>
+            <div class="menu-item" onclick="window.location.href='posts.html'">
+                <span class="menu-icon">📝</span>
+                <span>Posts</span>
+            </div>
+            <div class="menu-item" onclick="window.location.href='users.html'">
+                <span class="menu-icon">👥</span>
+                <span>Users</span>
+            </div>
+            <div class="menu-item active" onclick="window.location.href='reports.html'">
+                <span class="menu-icon">📈</span>
+                <span>Reports</span>
+            </div>
+            <div class="menu-item" onclick="window.location.href='settings.html'">
+                <span class="menu-icon">⚙️</span>
+                <span>Settings</span>
+            </div>
+            <!-- LOGOUT REMOVED FROM SIDEBAR -->
+        </div>
+
+        <div class="main-content">
+            <div class="page-title">
+                <h2>Reports & Analytics</h2>
+            </div>
+
+            <div class="date-range">
+                <label>Date Range:</label>
+                <input type="date" id="startDate" value="2024-01-01">
+                <span>to</span>
+                <input type="date" id="endDate" value="2024-12-31">
+                <button onclick="applyDateRange()">Apply</button>
+                <button onclick="exportReport()" style="background: #4CAF50; margin-left: auto;">Export Report</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total Users</h3>
+                    <div class="stat-number" id="total-users">0</div>
+                    <div class="stat-change positive" id="user-change">+0% vs last month</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Posts</h3>
+                    <div class="stat-number" id="total-posts">0</div>
+                    <div class="stat-change positive" id="post-change">+0% vs last month</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Active Users</h3>
+                    <div class="stat-number" id="active-users">0</div>
+                    <div class="stat-change positive" id="active-change">+0% vs last month</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Engagement Rate</h3>
+                    <div class="stat-number" id="engagement-rate">0%</div>
+                    <div class="stat-change positive" id="engagement-change">+0% vs last month</div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h3>User Growth</h3>
+                    <div class="bar-chart" id="user-growth-chart">
+                        <div class="bar-item">
+                            <div class="bar" style="height: 0px;"></div>
+                            <span class="bar-label">Jan</span>
+                        </div>
+                        <div class="bar-item">
+                            <div class="bar" style="height: 0px;"></div>
+                            <span class="bar-label">Feb</span>
+                        </div>
+                        <div class="bar-item">
+                            <div class="bar" style="height: 0px;"></div>
+                            <span class="bar-label">Mar</span>
+                        </div>
+                        <div class="bar-item">
+                            <div class="bar" style="height: 0px;"></div>
+                            <span class="bar-label">Apr</span>
+                        </div>
+                        <div class="bar-item">
+                            <div class="bar" style="height: 0px;"></div>
+                            <span class="bar-label">May</span>
+                        </div>
+                        <div class="bar-item">
+                            <div class="bar" style="height: 0px;"></div>
+                            <span class="bar-label">Jun</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Posts by Status</h3>
+                    <div style="display: flex; align-items: center; gap: 30px; flex-wrap: wrap;">
+                        <div class="pie-chart" id="pie-chart"></div>
+                        <div class="legend">
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: #F44336;"></div>
+                                <span>Lost (<span id="lost-percent">0</span>%)</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: #4CAF50;"></div>
+                                <span>Found (<span id="found-percent">0</span>%)</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: #2196F3;"></div>
+                                <span>Adoption (<span id="adoption-percent">0</span>%)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="reports-table">
+                <h3>Monthly Summary Report</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Month</th>
+                            <th>New Users</th>
+                            <th>New Posts</th>
+                            <th>Lost Pets</th>
+                            <th>Found Pets</th>
+                            <th>Adoptions</th>
+                            <th>Engagement</th>
+                        </tr>
+                    </thead>
+                    <tbody id="report-table-body">
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 30px; color: #999;">
+                                Loading report data...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="export-buttons">
+                <button class="export-btn" onclick="exportCSV()">
+                    <span>📊</span> Export as CSV
+                </button>
+                <button class="export-btn" onclick="exportPDF()">
+                    <span>📄</span> Export as PDF
+                </button>
+                <button class="export-btn" onclick="printReport()">
+                    <span>🖨️</span> Print Report
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Toggle dropdown menu
+        const avatarBtn = document.getElementById('avatarBtn');
+        const dropdownMenu = document.getElementById('dropdownMenu');
+
+        avatarBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            dropdownMenu.classList.toggle('show');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function (e) {
+            if (!avatarBtn.contains(e.target) && !dropdownMenu.contains(e.target)) {
+                dropdownMenu.classList.remove('show');
+            }
+        });
+
+        // Logout function
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                window.location.href = 'index.html';
+            }
+        }
+    </script>
+    <script src="js/reports.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+
+</html>

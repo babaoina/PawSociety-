@@ -5,7 +5,7 @@ const cors = require('cors');
 const path = require('path');
 
 // Import routes
-const authRoutes = require('./routes/auth');
+const { router: authRoutes } = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const postRoutes = require('./routes/posts');
 const commentRoutes = require('./routes/comments');
@@ -14,6 +14,10 @@ const petRoutes = require('./routes/pets');
 const favoriteRoutes = require('./routes/favorites');
 const uploadRoutes = require('./routes/upload');
 const notificationsRoutes = require('./routes/notifications');
+const adminRoutes = require('./routes/admin');
+const adminAuthRoutes = require('./routes/adminAuth');
+const adminSettingsRoutes = require('./routes/adminSettings');
+const adminUsersRoutes = require('./routes/adminUsers');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -28,6 +32,20 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve admin web app at /admin path
+const adminWebPath = path.join(__dirname, 'PawSocietyWeb-main', 'admin-pawsociety');
+app.use('/admin', express.static(adminWebPath));
+
+// Serve fixed dashboard at /admin/dashboard
+app.get('/admin/dashboard', (req, res) => {
+  res.sendFile(path.join(adminWebPath, 'fixed-dashboard.html'));
+});
+
+// Serve index.html for /admin/ routes (SPA fallback)
+app.get('/admin/*', (req, res) => {
+  res.sendFile(path.join(adminWebPath, 'index.html'));
+});
 
 // Serve static files for uploaded images
 app.use('/api/uploads', express.static('uploads'));
@@ -60,11 +78,16 @@ app.use('/api/pets', petRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/notifications', notificationsRoutes);
+// Admin routes - use specific paths to avoid conflicts
+app.use('/api/admin', adminUsersRoutes);
+app.use('/api/admin', adminSettingsRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/auth/admin', adminAuthRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     message: 'PawSociety Backend is running',
     timestamp: new Date().toISOString()
   });

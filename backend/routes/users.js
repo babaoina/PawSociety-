@@ -1,17 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const { verifyFirebaseToken } = require('./auth');
 
 /**
  * GET /api/users
  * Get all users (for suggestions, inbox, etc.)
+ * Admin-only endpoint
  */
-router.get('/', async (req, res) => {
+router.get('/', verifyFirebaseToken, async (req, res) => {
   try {
+    // Check if user is admin
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access only'
+      });
+    }
+
     const { limit = 50, skip = 0 } = req.query;
-    
+
     const users = await User.find()
-      .select('username email fullName phone profileImageUrl bio location createdAt firebaseUid')  // Include firebaseUid
+      .select('username email fullName phone profileImageUrl bio location createdAt firebaseUid role')  // Include firebaseUid and role
       .limit(parseInt(limit))
       .skip(parseInt(skip))
       .sort({ createdAt: -1 });
@@ -96,18 +106,28 @@ router.get('/username/:username', async (req, res) => {
 /**
  * PUT /api/users/:firebaseUid
  * Update user profile
+ * Allows self-editing and admin editing
  */
-router.put('/:firebaseUid', async (req, res) => {
+router.put('/:firebaseUid', verifyFirebaseToken, async (req, res) => {
   try {
+    // Check if user has permission to edit this user
+    if (!req.user || 
+        (req.user.firebaseUid !== req.params.firebaseUid && req.user.role !== 'admin')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only edit your own profile or you must be an admin.'
+      });
+    }
+
     const { username, fullName, bio, profileImageUrl, phone, location } = req.body;
 
     // Check if username is taken by another user
     if (username) {
-      const existingUser = await User.findOne({ 
-        username, 
-        firebaseUid: { $ne: req.params.firebaseUid } 
+      const existingUser = await User.findOne({
+        username,
+        firebaseUid: { $ne: req.params.firebaseUid }
       });
-      
+
       if (existingUser) {
         return res.status(400).json({
           success: false,
@@ -146,9 +166,18 @@ router.put('/:firebaseUid', async (req, res) => {
 /**
  * DELETE /api/users/:firebaseUid
  * Delete user account
+ * Admin-only endpoint
  */
-router.delete('/:firebaseUid', async (req, res) => {
+router.delete('/:firebaseUid', verifyFirebaseToken, async (req, res) => {
   try {
+    // Check if user is admin
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access only'
+      });
+    }
+
     const user = await User.findOneAndDelete({ firebaseUid: req.params.firebaseUid });
 
     if (!user) {

@@ -27,7 +27,7 @@ initializeFirebaseAdmin();
 // Verify Firebase ID token
 const verifyFirebaseToken = async (req, res, next) => {
   const idToken = req.headers.authorization?.replace('Bearer ', '');
-  
+
   if (!idToken) {
     return res.status(401).json({
       success: false,
@@ -39,12 +39,57 @@ const verifyFirebaseToken = async (req, res, next) => {
     // If Firebase Admin is not initialized, skip verification (dev mode)
     if (!admin.apps.length) {
       req.userUid = idToken; // Use token as UID for local testing
+      // Fetch user from DB to get role
+      const user = await User.findOne({ firebaseUid: idToken });
+      if (user) {
+        req.user = {
+          firebaseUid: user.firebaseUid,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          fullName: user.fullName
+        };
+      }
       return next();
     }
 
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     req.userUid = decodedToken.uid;
     req.userEmail = decodedToken.email;
+
+    // Fetch user from DB to get role and other info
+    const user = await User.findOne({ firebaseUid: decodedToken.uid });
+    
+    if (user) {
+      req.user = {
+        firebaseUid: user.firebaseUid,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        fullName: user.fullName
+      };
+    } else {
+      // User exists in Firebase but not in our DB - create it
+      console.log(`⚠️ User exists in Firebase but not in DB: ${decodedToken.uid}`);
+      // Create minimal user
+      const newUser = new User({
+        firebaseUid: decodedToken.uid,
+        email: decodedToken.email,
+        username: `user_${decodedToken.uid.substring(0, 8)}`,
+        fullName: decodedToken.email.split('@')[0],
+        role: 'user'
+      });
+      await newUser.save();
+      
+      req.user = {
+        firebaseUid: newUser.firebaseUid,
+        username: newUser.username,
+        email: newUser.email,
+        role: newUser.role,
+        fullName: newUser.fullName
+      };
+    }
+
     next();
   } catch (error) {
     console.error('Token verification error:', error.message);
@@ -80,17 +125,27 @@ router.post('/firebase-login', async (req, res) => {
     if (!user) {
       // Create new user
       console.log(`➕ Creating new user with UID: ${firebaseUid}`);
+      
+      // Determine role: check if email matches admin email (for first admin creation)
+      let role = 'user';
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (adminEmail && email.toLowerCase() === adminEmail.toLowerCase()) {
+        role = 'admin';
+        console.log(`👑 Creating admin user: ${email}`);
+      }
+
       user = new User({
         firebaseUid,
         email,
         username: username || `user_${firebaseUid.substring(0, 8)}`,
         fullName: fullName || email.split('@')[0],
-        phone: phone || ''
+        phone: phone || '',
+        role: role
       });
       await user.save();
-      console.log(`✅ User created successfully: ${user.username}`);
+      console.log(`✅ User created successfully: ${user.username} (role: ${user.role})`);
     } else {
-      console.log(`👤 Existing user logged in: ${user.username}`);
+      console.log(`👤 Existing user logged in: ${user.username} (role: ${user.role})`);
     }
 
     res.json({
@@ -105,6 +160,7 @@ router.post('/firebase-login', async (req, res) => {
         profileImageUrl: user.profileImageUrl,
         bio: user.bio,
         location: user.location,
+        role: user.role,
         createdAt: user.createdAt
       }
     });
@@ -143,6 +199,7 @@ router.post('/verify-token', verifyFirebaseToken, async (req, res) => {
         profileImageUrl: user.profileImageUrl,
         bio: user.bio,
         location: user.location,
+        role: user.role,
         createdAt: user.createdAt
       }
     });
@@ -155,4 +212,7 @@ router.post('/verify-token', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = {
+  router,
+  verifyFirebaseToken
+};

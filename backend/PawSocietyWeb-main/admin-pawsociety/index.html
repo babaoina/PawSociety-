@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PawSociety Admin</title>
+    <link rel="stylesheet" href="css/login.css">
+</head>
+
+<body>
+    <div class="login-container">
+        <div class="app-name">
+            <h1>PawSociety</h1>
+            <p>Admin Portal</p>
+        </div>
+
+        <!-- Welcome Section (shows on both forms) -->
+        <div class="welcome-section" id="welcomeSection">
+            <h2 id="formTitle">WELCOME</h2>
+            <p id="formDescription">With many pets waiting for a loving home,<br>PawSociety helps you discover adoptable
+                pets<br>and reconnect lost animals with their families.</p>
+        </div>
+
+        <!-- Login Form -->
+        <div class="login-form" id="loginForm">
+            <div class="input-group">
+                <label>Email</label>
+                <input type="email" placeholder="Enter your email" id="email">
+            </div>
+
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" placeholder="Enter your password" id="password">
+            </div>
+
+            <div class="forgot-password">
+                <a onclick="showForgotPassword()">Forgot Password?</a>
+            </div>
+
+            <button class="login-btn" onclick="login()" id="loginBtn">Login</button>
+        </div>
+
+        <!-- Forgot Password Form -->
+        <div class="forgot-form" id="forgotForm">
+            <!-- Back Button at the top -->
+            <div class="back-button">
+                <a onclick="showLogin()">
+                    <span class="back-arrow"></span> Back to Log in
+                </a>
+            </div>
+
+            <div class="input-group">
+                <label>Email</label>
+                <input type="email" placeholder="Enter your email" id="resetEmail">
+            </div>
+
+            <div class="input-group">
+                <label>New Password</label>
+                <input type="password" placeholder="Enter new password" id="newPassword">
+                <div id="passwordStrength" class="password-strength"></div>
+            </div>
+
+            <div class="input-group">
+                <label>Confirm Password</label>
+                <input type="password" placeholder="Confirm new password" id="confirmPassword">
+            </div>
+
+            <button class="reset-btn" onclick="resetPassword()" id="resetBtn">Reset Password</button>
+        </div>
+
+        <!-- Success Message Container -->
+        <div id="successMessage" style="display: none;"></div>
+
+    </div>
+
+    <!-- Firebase App (the core Firebase SDK) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <!-- Firebase Auth -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+    <!-- Initialize Firebase -->
+    <script src="js/firebase-config.js"></script>
+
+    <script src="js/auth.js"></script>
+</body>
+
+</html>
